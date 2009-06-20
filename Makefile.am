@@ -1,4 +1,5 @@
 
+ACLOCAL_AMFLAGS = -I m4
 if HAVE_PLPA
 SUBDIRS = plpa-1.1
 endif
@@ -14,6 +15,7 @@ pixmap_DATA = htop.png
 
 htop_CFLAGS = -pedantic -Wall -std=c99 -D_XOPEN_SOURCE_EXTENDED
 AM_CPPFLAGS = -DSYSCONFDIR=\"$(sysconfdir)\"
+
 
 myhtopsources = AvailableMetersPanel.c CategoriesPanel.c CheckItem.c \
 ClockMeter.c ColorsPanel.c ColumnsPanel.c CPUMeter.c CRT.c DebugMemory.c \

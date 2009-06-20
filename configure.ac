@@ -6,6 +6,7 @@ AC_INIT([htop],[0.8.2.1],[loderunner@users.sourceforge.net])
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([htop.c])
 AC_CONFIG_HEADER([config.h])
+AC_CONFIG_MACRO_DIR([m4])
 
 # Checks for programs.
 AC_PROG_CC
@@ -55,14 +56,14 @@ AC_TRY_COMPILE(AC_INCLUDES_DEFAULT, [char *a; a = strdup("foo"); int i = 0; i++;
    AC_MSG_ERROR([htop is written in C99. A newer version of gcc is required.]))
 CFLAGS="$save_cflags"
 
-PROCDIR=/proc
-AC_ARG_WITH(proc, [  --with-proc=DIR      Location of a Linux-compatible proc filesystem (default=/proc).],
-
-   if test -n "$withval"; then
-      AC_DEFINE_UNQUOTED(PROCDIR, "$withval", [Path of proc filesystem])
-      PROCDIR="$withval"
-   fi,
-   AC_DEFINE(PROCDIR, "/proc", [Path of proc filesystem]))
+#PROCDIR=/proc
+#AC_ARG_WITH(proc, [  --with-proc=DIR      Location of a Linux-compatible proc filesystem (default=/proc).],
+#
+#   if test -n "$withval"; then
+#      AC_DEFINE_UNQUOTED(PROCDIR, "$withval", [Path of proc filesystem])
+#      PROCDIR="$withval"
+#   fi,
+#   AC_DEFINE(PROCDIR, "/proc", [Path of proc filesystem]))
 
 AC_ARG_ENABLE(openvz, [AC_HELP_STRING([--enable-openvz], [enable OpenVZ support])], ,enable_openvz="no")
 if test "x$enable_openvz" = xyes; then
@@ -94,8 +95,8 @@ else
    AC_CHECK_HEADERS([curses.h],[:],[missing_headers="$missing_headers $ac_header"])
 fi
 
-AC_CHECK_FILE($PROCDIR/stat,,AC_MSG_ERROR(Cannot find /proc/stat. Make sure you have a Linux-compatible /proc filesystem mounted. See the file README for help.))
-AC_CHECK_FILE($PROCDIR/meminfo,,AC_MSG_ERROR(Cannot find /proc/meminfo. Make sure you have a Linux-compatible /proc filesystem mounted. See the file README for help.))
+#AC_CHECK_FILE($PROCDIR/stat,,AC_MSG_ERROR(Cannot find /proc/stat. Make sure you have a Linux-compatible /proc filesystem mounted. See the file README for help.))
+#AC_CHECK_FILE($PROCDIR/meminfo,,AC_MSG_ERROR(Cannot find /proc/meminfo. Make sure you have a Linux-compatible /proc filesystem mounted. See the file README for help.))
 
 PLPA_INCLUDED(plpa-1.1)
 PLPA_INIT(plpa_happy=yes, plpa_happy=no)

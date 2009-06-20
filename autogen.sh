@@ -3,7 +3,7 @@
 aclocal
 autoconf
 autoheader
-libtoolize --copy
+glibtoolize --copy
 automake --add-missing --copy
 
 
