@@ -5,6 +5,12 @@ Released under the GNU GPL, see the COPYING file
 in the source distribution for its full text.
 */
 
+/* Darwin reference:
+ *
+ * http://web.mit.edu/darwin/src/modules/xnu/osfmk/man/
+ *
+ */
+
 #ifndef CONFIG_H
 #define CONFIG_H
 #include "config.h"
