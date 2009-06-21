@@ -36,6 +36,7 @@ in the source distribution for its full text.
 
 #include <mach/mach_host.h>
 #include <mach/host_info.h>
+#include <mach/processor_info.h>
 
 #include "debug.h"
 #include <assert.h>
@@ -834,6 +835,18 @@ void ProcessList_scan(ProcessList* this) {
       this->stealTime[i] = steal;
       this->totalTime[i] = totaltime;
    }
+
+   {
+      
+
+
+      struct processor_cpu_load_info_data load;
+      mach_msg_type_number_t count = PROCESSOR_CPU_LOAD_INFO_COUNT;
+      host_statistics(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                                 (host_info_t)&load, &count);
+   }
+
+
    float period = (float)this->totalPeriod[0] / processors;
    fclose(status);
 
