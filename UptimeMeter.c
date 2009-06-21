@@ -56,7 +56,7 @@ static void UptimeMeter_setValues(Meter* this, char* buffer, int len) {
       snprintf(buffer, len, "%s%02d:%02d:%02d", daysbuf, hours, minutes, seconds);
    }
    else {
-      snprintf(buffer, len, "???", daysbuf, hours, minutes, seconds);
+      snprintf(buffer, len, "???");
    }
 }
 
