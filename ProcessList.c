@@ -34,12 +34,15 @@ in the source distribution for its full text.
 #include <sys/utsname.h>
 #include <stdarg.h>
 
+#include <mach/mach_host.h>
+#include <mach/host_info.h>
+
 #include "debug.h"
 #include <assert.h>
 
 /*{
 #ifndef PROCDIR
-#define PROCDIR "/proc"
+#define PROCDIR "./proc"
 #endif
 
 #ifndef PROCSTATFILE
@@ -210,6 +213,9 @@ static inline void ProcessList_allocatePerProcessorBuffers(ProcessList* this, in
 
 ProcessList* ProcessList_new(UsersTable* usersTable) {
    ProcessList* this;
+   host_basic_info_data_t hostInfo;
+   mach_msg_type_number_t infoCount;
+
    this = malloc(sizeof(ProcessList));
    this->processes = Vector_new(PROCESS_CLASS, true, DEFAULT_SIZE, Process_compare);
    this->processTable = Hashtable_new(70, false);
@@ -224,20 +230,15 @@ ProcessList* ProcessList_new(UsersTable* usersTable) {
    this->traceFile = fopen("/tmp/htop-proc-trace", "w");
    #endif
 
-   FILE* status = fopen(PROCSTATFILE, "r");
-   assert(status != NULL);
-   char buffer[256];
-   int procs = -1;
-   do {
-      procs++;
-      fgets(buffer, 255, status);
-   } while (String_startsWith(buffer, "cpu"));
-   fclose(status);
-   this->processorCount = procs - 1;
+   infoCount = HOST_BASIC_INFO_COUNT;
+   host_info(mach_host_self(), HOST_BASIC_INFO, 
+               (host_info_t) &hostInfo, &infoCount);
+   this->processorCount = hostInfo.avail_cpus;
    
-   ProcessList_allocatePerProcessorBuffers(this, procs);
+   /* TODO not sure we need the +1 here */
+   ProcessList_allocatePerProcessorBuffers(this, hostInfo.avail_cpus + 1);
 
-   for (int i = 0; i < procs; i++) {
+   for (int i = 0; i < hostInfo.avail_cpus + 1; i++) {
       this->totalTime[i] = 1;
       this->totalPeriod[i] = 1;
    }

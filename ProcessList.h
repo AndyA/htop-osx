@@ -9,6 +9,12 @@ Released under the GNU GPL, see the COPYING file
 in the source distribution for its full text.
 */
 
+/* Darwin reference:
+ *
+ * http://web.mit.edu/darwin/src/modules/xnu/osfmk/man/
+ *
+ */
+
 #ifndef CONFIG_H
 #define CONFIG_H
 #include "config.h"
@@ -31,11 +37,14 @@ in the source distribution for its full text.
 #include <sys/utsname.h>
 #include <stdarg.h>
 
+#include <mach/mach_host.h>
+#include <mach/host_info.h>
+
 #include "debug.h"
 #include <assert.h>
 
 #ifndef PROCDIR
-#define PROCDIR "/proc"
+#define PROCDIR "./proc"
 #endif
 
 #ifndef PROCSTATFILE
