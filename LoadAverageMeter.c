@@ -19,13 +19,12 @@ int LoadAverageMeter_attributes[] = {
 int LoadMeter_attributes[] = { LOAD };
 
 static inline void LoadAverageMeter_scan(double* one, double* five, double* fifteen) {
-   int activeProcs, totalProcs, lastProc;
-   FILE *fd = fopen(PROCDIR "/loadavg", "r");
-   int read = fscanf(fd, "%lf %lf %lf %d/%d %d", one, five, fifteen,
-      &activeProcs, &totalProcs, &lastProc);
-   (void) read;
-   assert(read == 6);
-   fclose(fd);
+   double loadavg[3];
+
+   getloadavg(loadavg, 3);
+   *one     = loadavg[0];
+   *five    = loadavg[1];
+   *fifteen = loadavg[2];
 }
 
 static void LoadAverageMeter_setValues(Meter* this, char* buffer, int size) {
