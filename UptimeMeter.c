@@ -14,35 +14,50 @@ in the source distribution for its full text.
 
 #include "debug.h"
 
+#include <sys/sysctl.h>
+
 int UptimeMeter_attributes[] = {
    UPTIME
 };
 
 static void UptimeMeter_setValues(Meter* this, char* buffer, int len) {
-   double uptime;
-   FILE* fd = fopen(PROCDIR "/uptime", "r");
-   fscanf(fd, "%lf", &uptime);
-   fclose(fd);
-   int totalseconds = (int) ceil(uptime);
-   int seconds = totalseconds % 60;
-   int minutes = (totalseconds/60) % 60;
-   int hours = (totalseconds/3600) % 24;
-   int days = (totalseconds/86400);
-   this->values[0] = days;
-   if (days > this->total) {
-      this->total = days;
+   int mib[2];
+   size_t size;
+   time_t uptime;
+   struct timeval boottime;
+   time_t now;
+
+   mib[0] = CTL_KERN;
+   mib[1] = KERN_BOOTTIME;
+   size = sizeof(boottime);
+   (void) time(&now);
+   if (sysctl(mib, 2, &boottime, &size, NULL, 0) != -1 
+         && boottime.tv_sec != 0) {
+      uptime = now - boottime.tv_sec;
+      int totalseconds = (int) uptime;
+      int seconds = totalseconds % 60;
+      int minutes = (totalseconds/60) % 60;
+      int hours = (totalseconds/3600) % 24;
+      int days = (totalseconds/86400);
+      this->values[0] = days;
+      if (days > this->total) {
+         this->total = days;
+      }
+      char daysbuf[15];
+      if (days > 100) {
+         sprintf(daysbuf, "%d days(!), ", days);
+      } else if (days > 1) {
+         sprintf(daysbuf, "%d days, ", days);
+      } else if (days == 1) {
+         sprintf(daysbuf, "1 day, ");
+      } else {
+         daysbuf[0] = '\0';
+      }
+      snprintf(buffer, len, "%s%02d:%02d:%02d", daysbuf, hours, minutes, seconds);
    }
-   char daysbuf[15];
-   if (days > 100) {
-      sprintf(daysbuf, "%d days(!), ", days);
-   } else if (days > 1) {
-      sprintf(daysbuf, "%d days, ", days);
-   } else if (days == 1) {
-      sprintf(daysbuf, "1 day, ");
-   } else {
-      daysbuf[0] = '\0';
+   else {
+      snprintf(buffer, len, "???", daysbuf, hours, minutes, seconds);
    }
-   snprintf(buffer, len, "%s%02d:%02d:%02d", daysbuf, hours, minutes, seconds);
 }
 
 MeterType UptimeMeter = {

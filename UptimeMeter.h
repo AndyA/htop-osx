@@ -17,6 +17,8 @@ in the source distribution for its full text.
 
 #include "debug.h"
 
+#include <sys/sysctl.h>
+
 extern int UptimeMeter_attributes[];
 
 extern MeterType UptimeMeter;
