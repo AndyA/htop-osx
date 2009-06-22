@@ -924,6 +924,47 @@ RETURN:
   return retval;
 }
 
+static int
+libtop_p_schedinfo( libtop_pinfo_t * pinfo,
+                    thread_port_t thread, policy_t pol ) {
+  unsigned int count;
+  int ret = KERN_FAILURE;
+  int pri = 0;
+  struct policy_timeshare_info tshare;
+  struct policy_rr_info rr;
+  struct policy_fifo_info fifo;
+
+  switch ( pol ) {
+  case POLICY_TIMESHARE:
+    count = POLICY_TIMESHARE_INFO_COUNT;
+    ret = thread_info( thread, THREAD_SCHED_TIMESHARE_INFO,
+                       ( thread_info_t ) & tshare, &count );
+    pri = tshare.base_priority;
+    break;
+
+  case POLICY_FIFO:
+    count = POLICY_FIFO_INFO_COUNT;
+    ret =
+        thread_info( thread, THREAD_SCHED_FIFO_INFO,
+                     ( thread_info_t ) & fifo, &count );
+    pri = fifo.base_priority;
+    break;
+
+  case POLICY_RR:
+    count = POLICY_RR_INFO_COUNT;
+    ret =
+        thread_info( thread, THREAD_SCHED_RR_INFO, ( thread_info_t ) & rr,
+                     &count );
+    pri = rr.base_priority;
+    break;
+  }
+
+  if ( ret == KERN_SUCCESS && pinfo->psamp.curpri < pri )
+    pinfo->psamp.curpri = pri;
+
+  return ret;
+}
+
 /* Update statistics for task a_task. */
 static boolean_t
 libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
@@ -1303,6 +1344,9 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
   TIME_VALUE_TO_TIMEVAL( &ti.system_time, &pinfo->psamp.system_time );
   TIME_VALUE_TO_TIMEVAL( &ti.user_time, &pinfo->psamp.user_time );
 
+  pinfo->psamp.p_cpu_usage = pinfo->psamp.cpu_usage;
+  pinfo->psamp.p_curpri = pinfo->psamp.curpri;
+
   state = LIBTOP_STATE_MAX;
   pinfo->psamp.state = LIBTOP_STATE_MAX;
 
@@ -1317,6 +1361,8 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
   /* Set the number of threads and add to the global thread count. */
   pinfo->psamp.th = table_size;
   tsamp.threads += table_size;
+  pinfo->psamp.cpu_usage = 0;
+  pinfo->psamp.curpri = 0;
 
   /* Iterate through threads and collect usage stats. */
   thi = &thi_data;
@@ -1331,12 +1377,23 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
         timeradd( &pinfo->psamp.system_time, &tv,
                   &pinfo->psamp.system_time );
       }
+
+      pinfo->psamp.cpu_usage += thi->cpu_usage;
       tstate = libtop_p_mach_state_order( thi->run_state,
                                           thi->sleep_time );
       if ( tstate < state ) {
         state = tstate;
         pinfo->psamp.state = tstate;
       }
+    }
+
+    if ( ( error =
+           libtop_p_schedinfo( pinfo, thread_table[i],
+                               thi->policy ) ) != KERN_SUCCESS ) {
+      libtop_print( libtop_user_data, "Error getting priority: %s",
+                    mach_error_string( error ) );
+      retval = TRUE;
+      goto RETURN;
     }
 
     if ( a_task != mach_task_self(  ) ) {
@@ -1367,6 +1424,10 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
     pinfo->psamp.p_system_time = pinfo->psamp.system_time;
     pinfo->psamp.b_user_time = pinfo->psamp.user_time;
     pinfo->psamp.p_user_time = pinfo->psamp.user_time;
+    pinfo->psamp.b_cpu_usage = pinfo->psamp.cpu_usage;
+    pinfo->psamp.p_cpu_usage = pinfo->psamp.cpu_usage;
+    pinfo->psamp.b_curpri = pinfo->psamp.curpri;
+    pinfo->psamp.p_curpri = pinfo->psamp.curpri;
   }
 
   /*

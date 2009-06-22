@@ -183,6 +183,16 @@ struct libtop_psamp_s {
   task_events_info_data_t b_events;
   task_events_info_data_t p_events;
 
+  /* Priority */
+  int curpri;
+  int b_curpri;
+  int p_curpri;
+
+  /* CPU usage */
+  int cpu_usage;
+  int b_cpu_usage;
+  int p_cpu_usage;
+
   /* malloc()ed '\0'-terminated string. */
   char *command;
 

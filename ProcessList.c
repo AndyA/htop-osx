@@ -360,7 +360,7 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
     p->stime = proc->system_time.tv_sec;
     p->cutime = 0;              // TODO 
     p->cstime = 0;              // TODO
-    p->priority = 0;            // TODO
+    p->priority = proc->curpri;
     p->nice = 0;                // TODO
     p->nlwp = 0;                // TODO
     p->exit_signal = 0;         // TODO
@@ -370,7 +370,7 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
 
     p->comm = proc->command;
 
-    p->percent_cpu = 0;         //ki->cpu_usage * 100 / TH_USAGE_SCALE;
+    p->percent_cpu = proc->cpu_usage * 100 / TH_USAGE_SCALE;
     p->percent_mem = p->m_resident * 100 / this->totalMem;
 
     this->totalTasks++;
