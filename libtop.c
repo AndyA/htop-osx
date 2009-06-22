@@ -1048,6 +1048,7 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
   pinfo->psamp.ppid = kinfo.kp_eproc.e_ppid;
   pinfo->psamp.pgrp = kinfo.kp_eproc.e_pgid;
   pinfo->flag = kinfo.kp_proc.p_flag;
+  pinfo->psamp.nice = kinfo.kp_proc.p_nice;
 
   pinfo->psamp.p_seq = pinfo->psamp.seq;
   pinfo->psamp.seq = tsamp.seq;
@@ -1346,6 +1347,7 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
 
   pinfo->psamp.p_cpu_usage = pinfo->psamp.cpu_usage;
   pinfo->psamp.p_curpri = pinfo->psamp.curpri;
+  pinfo->psamp.p_nice = pinfo->psamp.nice;
 
   state = LIBTOP_STATE_MAX;
   pinfo->psamp.state = LIBTOP_STATE_MAX;
@@ -1428,6 +1430,8 @@ libtop_p_task_update( task_t a_task, boolean_t a_reg ) {
     pinfo->psamp.p_cpu_usage = pinfo->psamp.cpu_usage;
     pinfo->psamp.b_curpri = pinfo->psamp.curpri;
     pinfo->psamp.p_curpri = pinfo->psamp.curpri;
+    pinfo->psamp.b_nice = pinfo->psamp.nice;
+    pinfo->psamp.p_nice = pinfo->psamp.nice;
   }
 
   /*

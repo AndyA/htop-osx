@@ -361,7 +361,7 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
     p->cutime = 0;              // TODO 
     p->cstime = 0;              // TODO
     p->priority = proc->curpri;
-    p->nice = 0;                // TODO
+    p->nice = proc->nice;
     p->nlwp = 0;                // TODO
     p->exit_signal = 0;         // TODO
     p->processor = 0;           // TODO

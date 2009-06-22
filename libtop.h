@@ -193,6 +193,11 @@ struct libtop_psamp_s {
   int b_cpu_usage;
   int p_cpu_usage;
 
+  /* Nice value */
+  int nice;
+  int b_nice;
+  int p_nice;
+
   /* malloc()ed '\0'-terminated string. */
   char *command;
 
