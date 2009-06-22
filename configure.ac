@@ -56,15 +56,6 @@ AC_TRY_COMPILE(AC_INCLUDES_DEFAULT, [char *a; a = strdup("foo"); int i = 0; i++;
    AC_MSG_ERROR([htop is written in C99. A newer version of gcc is required.]))
 CFLAGS="$save_cflags"
 
-#PROCDIR=/proc
-#AC_ARG_WITH(proc, [  --with-proc=DIR      Location of a Linux-compatible proc filesystem (default=/proc).],
-#
-#   if test -n "$withval"; then
-#      AC_DEFINE_UNQUOTED(PROCDIR, "$withval", [Path of proc filesystem])
-#      PROCDIR="$withval"
-#   fi,
-#   AC_DEFINE(PROCDIR, "/proc", [Path of proc filesystem]))
-
 AC_ARG_ENABLE(openvz, [AC_HELP_STRING([--enable-openvz], [enable OpenVZ support])], ,enable_openvz="no")
 if test "x$enable_openvz" = xyes; then
    AC_DEFINE(HAVE_OPENVZ, 1, [Define if openvz support enabled.])
@@ -93,16 +84,6 @@ if test "x$enable_unicode" = xyes; then
 else
    AC_CHECK_LIB([ncurses], [refresh], [], [missing_libraries="$missing_libraries libncurses"])
    AC_CHECK_HEADERS([curses.h],[:],[missing_headers="$missing_headers $ac_header"])
-fi
-
-#AC_CHECK_FILE($PROCDIR/stat,,AC_MSG_ERROR(Cannot find /proc/stat. Make sure you have a Linux-compatible /proc filesystem mounted. See the file README for help.))
-#AC_CHECK_FILE($PROCDIR/meminfo,,AC_MSG_ERROR(Cannot find /proc/meminfo. Make sure you have a Linux-compatible /proc filesystem mounted. See the file README for help.))
-
-PLPA_INCLUDED(plpa-1.1)
-PLPA_INIT(plpa_happy=yes, plpa_happy=no)
-AM_CONDITIONAL([HAVE_PLPA], [test "$plpa_happy" = "yes"])
-if test "$plpa_happy" = "yes"; then
-   AC_DEFINE([HAVE_PLPA], [1], [Have plpa])
 fi
 
 AC_CONFIG_FILES([Makefile])

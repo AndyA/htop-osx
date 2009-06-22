@@ -397,6 +397,42 @@ ProcessList_getTaskInfo( KINFO * ki ) {
             ( SHARED_TEXT_REGION_SIZE + SHARED_DATA_REGION_SIZE );
     }
   }
+
+  {
+    ki->shared = 0;
+    ki->swapped_pages = 0;
+
+    // This works but is far too slow to enable. Need a better way.
+#if 0
+
+    vm_address_t address;
+    mach_port_t object_name;
+    vm_region_extended_info_data_t info;
+    vm_region_basic_info_data_64_t b_info;
+    vm_size_t size;
+
+    for ( address = 0;; address += size ) {
+      info_count = VM_REGION_EXTENDED_INFO_COUNT;
+      if ( vm_region
+           ( ki->task, &address, &size, VM_REGION_EXTENDED_INFO,
+             ( vm_region_extended_info_t ) & info, &info_count,
+             &object_name ) != KERN_SUCCESS )
+        break;
+
+      ki->swapped_pages += info.pages_swapped_out;
+
+      info_count = VM_REGION_BASIC_INFO_COUNT_64;
+      if ( vm_region_64( ki->task, &address, &size, VM_REGION_BASIC_INFO,
+                         ( vm_region_info_t ) & b_info, &info_count,
+                         &object_name ) != KERN_SUCCESS )
+        break;
+
+      if ( b_info.shared )
+        ki->shared += size;
+    }
+#endif
+  }
+
   info_count = TASK_THREAD_TIMES_INFO_COUNT;
   error = task_info( ki->task, TASK_THREAD_TIMES_INFO,
                      ( task_info_t ) & ki->times, &info_count );
@@ -779,7 +815,7 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
     process->st_uid = e->e_pcred.p_ruid;
     process->m_size = ( u_long ) ki->tasks_info.virtual_size / 1024;
     process->m_resident = ( u_long ) ki->tasks_info.resident_size / 1024;
-    process->m_share = 0;       // TODO shared
+    process->m_share = ( u_long ) ( ki->shared / 1024 );
     process->m_trs = 0;         // TODO code
     process->m_lrs = 0;         // TODO data/stack
     process->m_drs = 0;         // TODO library
@@ -840,21 +876,6 @@ ProcessList_scan( ProcessList * this ) {
 
   noerr( host_statistics( mach_host_self(  ), HOST_VM_INFO,
                           ( host_info_t ) & vm_stat, &infoCount ) );
-
-/*
-   free_count;
-   active_count;
-   inactive_count;
-   wire_count;
-   zero_fill_count;
-   reactivations;
-   pageins;
-   pageouts;
-   faults;
-   cow_faults;
-   lookups;
-   hits;
-*/
 
   this->freeMem = this->pageSize * vm_stat.free_count / 1024;
   this->sharedMem = 0;
@@ -958,7 +979,6 @@ ProcessList_scan( ProcessList * this ) {
   this->totalTasks = 0;
   this->runningTasks = 0;
 
-  //ProcessList_processEntries(this, PROCDIR, NULL, period);
   ProcessList_getProcesses( this, period );
 
   for ( int i = Vector_size( this->processes ) - 1; i >= 0; i-- ) {
