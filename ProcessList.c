@@ -969,30 +969,133 @@ static void getproclline(KINFO *k, char **command_name, int *cmdlen, int eflg, i
 }
 
 static bool ProcessList_getProcesses(ProcessList *this, float period) {
-	struct kinfo_proc *kp;
 	struct kinfo_proc *kprocbuf = NULL;
 	size_t bufSize = 0;
 	int nentries;
 	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0 };
 
+   Process* prototype = this->prototype;
+
 	if (sysctl(mib, 4, NULL, &bufSize, NULL, 0) < 0)
 		die("Failure calling sysctl");
 
-	if ((kprocbuf = kp = (struct kinfo_proc *) malloc(bufSize)) == NULL)
+	if ((kprocbuf = (struct kinfo_proc *) malloc(bufSize)) == NULL)
 		die("Memory allocation failure");
 
-	if (sysctl(mib, 4, kp, &bufSize, NULL, 0) < 0)
+	if (sysctl(mib, 4, kprocbuf, &bufSize, NULL, 0) < 0)
 		die("Failure calling sysctl");
 
 	this->totalTasks = bufSize/ sizeof(struct kinfo_proc);
 
-   for ( int i = 0; i < this->totalTasks; i++ ) {
+   for ( int i = this->totalTasks-1; i >= 0; i-- ) {
+      struct kinfo_proc *kp = &kprocbuf[i];
 		struct extern_proc *p;
 		struct eproc *e;
 		KINFO kinfo;
 		memset(&kinfo, 0, sizeof(kinfo));
 		KINFO *ki = &kinfo;
+      char *command_name;
+      int state, cmdlen, pid;
 		time_value_t total_time, system_time, user_time;
+
+      char command[PROCESS_COMM_LEN + 1];
+
+		ki->ki_p = kp;
+
+		get_task_info(ki);
+
+		p = KI_PROC(ki);
+		e = KI_EPROC(ki);
+
+      pid = p->p_pid;
+
+      Process* process = NULL;
+      Process* existingProcess = (Process*) Hashtable_get(this->processTable, pid);
+
+      if (existingProcess) {
+         assert(Vector_indexOf(this->processes, existingProcess,
+                  Process_pidCompare) != -1);
+         process = existingProcess;
+         assert(process->pid == pid);
+      } else {
+         process = prototype;
+         assert(process->comm == NULL);
+         process->pid = pid;
+      }
+
+      process->updated = true;
+
+		state = p->p_stat == SZOMB ? SZOMB : ki->state;
+
+		getproclline (ki, &command_name, &cmdlen, 0, 1);
+
+		user_time = ki->tasks_info.user_time;
+		time_value_add (&user_time, &ki->times.user_time);
+		system_time = ki->tasks_info.system_time;
+		time_value_add (&system_time, &ki->times.system_time);
+		total_time = user_time;
+		time_value_add (&total_time, &system_time);
+
+      process->st_uid        = e->e_pcred.p_ruid;
+      process->m_size        = (u_long) ki->tasks_info.virtual_size / 1024;
+      process->m_resident    = (u_long) ki->tasks_info.resident_size / 1024;
+      process->m_share       = 0; // TODO shared
+      process->m_trs         = 0; // TODO code
+      process->m_lrs         = 0; // TODO data/stack
+      process->m_drs         = 0; // TODO library
+      process->m_dt          = 0; // TODO dirty
+
+      process->state         = p->p_stat == SZOMB ? SZOMB : ki->state;
+      process->ppid          = e->e_ppid;
+      process->pgrp          = e->e_pgid; // TODO check this
+      //process->session       = e->e_sess;
+      process->session       = 0;         // TODO
+      process->tty_nr        = e->e_tdev;
+      process->tgid          = pid;       // TODO check this
+      process->tpgid         = 0;         // TODO
+      process->flags         = p->p_flag;
+      process->utime         = user_time.seconds;
+      process->stime         = system_time.seconds;
+      process->cutime        = 0;         // TODO 
+      process->cstime        = 0;         // TODO
+      process->priority      = ki->curpri;
+      process->nice          = p->p_nice;
+      process->nlwp          = 0;         // TODO
+      process->exit_signal   = 0;         // TODO
+      process->processor     = 0;         // TODO
+      //process->vpid          = 0;         // TODO
+      //process->cpid          = 0;         // TODO
+      process->comm          = cmdlen ? command_name : "(none)";
+
+#ifndef	TH_USAGE_SCALE
+#define	TH_USAGE_SCALE	1000
+#endif	TH_USAGE_SCALE
+#define usage_to_percent(u)	((u*100)/TH_USAGE_SCALE)
+
+      process->percent_cpu   = usage_to_percent(ki->cpu_usage); 
+      process->percent_mem   = ((float) ki->tasks_info.resident_size) 
+                                             * 100 / this->totalMem / 1024;
+      
+      if (process->state == 'R')
+         this->runningTasks++;
+
+      if (!existingProcess) {
+         process = Process_clone(process);
+         ProcessList_add(this, process);
+      }
+
+      continue;
+
+      // Exception handler.
+      errorReadingProcess: {
+         if (process->comm) {
+            free(process->comm);
+            process->comm = NULL;
+         }
+         if (existingProcess)
+            ProcessList_remove(this, process);
+         assert(Hashtable_count(this->processTable) == Vector_count(this->processes));
+      }
    }
 
    return true;
@@ -1339,7 +1442,7 @@ void ProcessList_scan(ProcessList* this) {
    this->totalTasks = 0;
    this->runningTasks = 0;
 
-   ProcessList_processEntries(this, PROCDIR, NULL, period);
+   //ProcessList_processEntries(this, PROCDIR, NULL, period);
    ProcessList_getProcesses(this, period);
    
    for (int i = Vector_size(this->processes) - 1; i >= 0; i--) {
