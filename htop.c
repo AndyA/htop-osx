@@ -282,11 +282,6 @@ int main(int argc, char** argv) {
       arg++;
    }
    
-   if (access(PROCDIR, R_OK) != 0) {
-      fprintf(stderr, "Error: could not read procfs (compiled to look in %s).\n", PROCDIR);
-      exit(1);
-   }
-
    Panel* panel;
    int quit = 0;
    int refreshTimeout = 0;

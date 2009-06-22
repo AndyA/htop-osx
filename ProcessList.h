@@ -61,18 +61,6 @@ in the source distribution for its full text.
 #include "util.h"
 #include <assert.h>
 
-#ifndef PROCDIR
-#define PROCDIR "../proc"
-#endif
-
-#ifndef PROCSTATFILE
-#define PROCSTATFILE PROCDIR "/stat"
-#endif
-
-#ifndef PROCMEMINFOFILE
-#define PROCMEMINFOFILE PROCDIR "/meminfo"
-#endif
-
 #ifndef MAX_NAME
 #define MAX_NAME 128
 #endif
