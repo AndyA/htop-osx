@@ -37,8 +37,11 @@ in the source distribution for its full text.
 #include <sys/utsname.h>
 #include <stdarg.h>
 
-#include <mach/mach_host.h>
 #include <mach/host_info.h>
+#include <mach/mach_host.h>
+#include <mach/mach_interface.h>
+#include <mach/machine.h>
+#include <mach/processor_info.h>
 
 #include "debug.h"
 #include <assert.h>

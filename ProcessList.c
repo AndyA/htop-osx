@@ -34,8 +34,10 @@ in the source distribution for its full text.
 #include <sys/utsname.h>
 #include <stdarg.h>
 
-#include <mach/mach_host.h>
 #include <mach/host_info.h>
+#include <mach/mach_host.h>
+#include <mach/mach_interface.h>
+#include <mach/machine.h>
 #include <mach/processor_info.h>
 
 #include "debug.h"
@@ -837,15 +839,41 @@ void ProcessList_scan(ProcessList* this) {
    }
 
    {
-      
+      mach_msg_type_number_t count;
+      processor_array_t pport;
+      host_t host;
+      host_processors(mach_host_self(), &pport, &count); 
 
+      this->userPeriod[0]   = 0; 
+      this->nicePeriod[0]   = 0;
+      this->systemPeriod[0] = 0;
+      this->idlePeriod[0]   = 0;
+      this->totalTime[0]    = 0;
 
-      struct processor_cpu_load_info_data load;
-      mach_msg_type_number_t count = PROCESSOR_CPU_LOAD_INFO_COUNT;
-      host_statistics(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
-                                 (host_info_t)&load, &count);
+      for (int i = 1; i <= count; i++) {
+         struct processor_cpu_load_info load;
+         count = PROCESSOR_CPU_LOAD_INFO_COUNT;
+         processor_info(pport[i-1], PROCESSOR_CPU_LOAD_INFO, 
+                           &host, (processor_info_t) &load, &count);
+
+         int usertime   = load.cpu_ticks[CPU_STATE_USER];
+         int nicetime   = load.cpu_ticks[CPU_STATE_NICE];
+         int systemtime = load.cpu_ticks[CPU_STATE_SYSTEM];
+         int idletime   = load.cpu_ticks[CPU_STATE_IDLE];
+
+         this->userPeriod[i]   = usertime - this->userTime[i];
+         this->nicePeriod[i]   = nicetime - this->niceTime[i];
+         this->systemPeriod[i] = systemtime - this->systemTime[i];
+         this->idlePeriod[i]   = idletime - this->idleTime[i];
+         this->totalTime[i]    = usertime + nicetime + systemtime + idletime;
+
+         this->userPeriod[0]   += this->userPeriod[i];
+         this->nicePeriod[0]   += this->nicePeriod[i];
+         this->systemPeriod[0] += this->systemPeriod[i];
+         this->idlePeriod[0]   += this->idlePeriod[i];
+         this->totalTime[0]    += this->totalTime[i];
+      }
    }
-
 
    float period = (float)this->totalPeriod[0] / processors;
    fclose(status);
