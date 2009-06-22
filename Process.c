@@ -534,8 +534,6 @@ void
 Process_delete( Object * cast ) {
   Process *this = ( Process * ) cast;
   assert( this != NULL );
-  if ( this->comm )
-    free( this->comm );
   free( this );
 }
 
