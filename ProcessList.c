@@ -45,7 +45,7 @@ in the source distribution for its full text.
 
 /*{
 #ifndef PROCDIR
-#define PROCDIR "./proc"
+#define PROCDIR "../proc"
 #endif
 
 #ifndef PROCSTATFILE
@@ -86,6 +86,7 @@ typedef struct ProcessList_ {
    int processorCount;
    int totalTasks;
    int runningTasks;
+   vm_size_t pageSize;
 
    // Must match number of PER_PROCESSOR_FIELDS constant
    unsigned long long int* totalTime;
@@ -237,6 +238,9 @@ ProcessList* ProcessList_new(UsersTable* usersTable) {
    host_info(mach_host_self(), HOST_BASIC_INFO, 
                (host_info_t) &hostInfo, &infoCount);
    this->processorCount = hostInfo.avail_cpus;
+   this->totalMem       = hostInfo.max_mem / 1024;
+
+   host_page_size(mach_host_self(), &this->pageSize);
    
    /* TODO not sure we need the +1 here */
    ProcessList_allocatePerProcessorBuffers(this, hostInfo.avail_cpus + 1);
@@ -741,131 +745,122 @@ static bool ProcessList_processEntries(ProcessList* this, char* dirname, Process
 void ProcessList_scan(ProcessList* this) {
    unsigned long long int usertime, nicetime, systemtime, 
                  systemalltime, idlealltime, idletime, totaltime;
-   unsigned long long int swapFree;
 
-   FILE* status;
-   char buffer[128];
-   status = ProcessList_fopen(this, PROCMEMINFOFILE, "r");
-   assert(status != NULL);
-   int processors = this->processorCount;
-   while (!feof(status)) {
-      fgets(buffer, 128, status);
+   mach_msg_type_number_t infoCount;
+   vm_statistics_data_t   vm_stat;
 
-      switch (buffer[0]) {
-      case 'M':
-         if (String_startsWith(buffer, "MemTotal:"))
-            ProcessList_read(this, buffer, "MemTotal: %llu kB", &this->totalMem);
-         else if (String_startsWith(buffer, "MemFree:"))
-            ProcessList_read(this, buffer, "MemFree: %llu kB", &this->freeMem);
-         else if (String_startsWith(buffer, "MemShared:"))
-            ProcessList_read(this, buffer, "MemShared: %llu kB", &this->sharedMem);
-         break;
-      case 'B':
-         if (String_startsWith(buffer, "Buffers:"))
-            ProcessList_read(this, buffer, "Buffers: %llu kB", &this->buffersMem);
-         break;
-      case 'C':
-         if (String_startsWith(buffer, "Cached:"))
-            ProcessList_read(this, buffer, "Cached: %llu kB", &this->cachedMem);
-         break;
-      case 'S':
-         if (String_startsWith(buffer, "SwapTotal:"))
-            ProcessList_read(this, buffer, "SwapTotal: %llu kB", &this->totalSwap);
-         if (String_startsWith(buffer, "SwapFree:"))
-            ProcessList_read(this, buffer, "SwapFree: %llu kB", &swapFree);
-         break;
-      }
-   }
+   infoCount = sizeof(vm_statistics_data_t) / sizeof(integer_t);
 
-   this->usedMem = this->totalMem - this->freeMem;
-   this->usedSwap = this->totalSwap - swapFree;
-   fclose(status);
+   host_statistics(mach_host_self(), HOST_VM_INFO,
+         (host_info_t) &vm_stat, &infoCount);
 
-   {
-      unsigned int cpu_count;
-      processor_cpu_load_info_t cpu_load;
-      mach_msg_type_number_t cpu_msg_count;
-      kern_return_t kret;
+/*
+   integer_t       free_count;
+   integer_t       active_count;
+   integer_t       inactive_count;
+   integer_t       wire_count;
+   integer_t       zero_fill_count;
+   integer_t       reactivations;
+   integer_t       pageins;
+   integer_t       pageouts;
+   integer_t       faults;
+   integer_t       cow_faults;
+   integer_t       lookups;
+   integer_t       hits;
+*/
 
-      host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
-                              &cpu_count,
-                              (processor_info_array_t *)&cpu_load,
-                              &cpu_msg_count);
+   this->freeMem    = this->pageSize * vm_stat.free_count / 1024;
+   this->sharedMem  = 0;
+   this->buffersMem = 0;
+   this->cachedMem  = 0;
+   this->totalSwap  = 0;
+   this->freeSwap   = 0;
+
+   this->usedMem  = this->totalMem  - this->freeMem;
+   this->usedSwap = this->totalSwap - this->freeSwap;
+
+   unsigned int cpu_count;
+   processor_cpu_load_info_t cpu_load;
+   mach_msg_type_number_t cpu_msg_count;
+
+   host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                           &cpu_count,
+                           (processor_info_array_t *)&cpu_load,
+                           &cpu_msg_count);
 
 #define ZSLOT( n ) \
-      do { this->n[0] = 0; } while (0)
+   do { this->n[0] = 0; } while (0)
 #define UPSLOT( n, v ) \
-      do { this->n[i] = (v); this->n[0] += this->n[i]; } while (0)
+   do { this->n[i] = (v); this->n[0] += this->n[i]; } while (0)
 
-      ZSLOT( userPeriod );
-      ZSLOT( nicePeriod );
-      ZSLOT( systemPeriod );
-      ZSLOT( systemAllPeriod );
-      ZSLOT( idleAllPeriod );
-      ZSLOT( idlePeriod );
-      ZSLOT( ioWaitPeriod );
-      ZSLOT( irqPeriod );
-      ZSLOT( softIrqPeriod );
-      ZSLOT( stealPeriod );
-      ZSLOT( totalPeriod );
-      ZSLOT( userTime );
-      ZSLOT( niceTime );
-      ZSLOT( systemTime );
-      ZSLOT( systemAllTime );
-      ZSLOT( idleAllTime );
-      ZSLOT( idleTime );
-      ZSLOT( ioWaitTime );
-      ZSLOT( irqTime );
-      ZSLOT( softIrqTime );
-      ZSLOT( stealTime );
-      ZSLOT( totalTime );
+   ZSLOT( userPeriod );
+   ZSLOT( nicePeriod );
+   ZSLOT( systemPeriod );
+   ZSLOT( systemAllPeriod );
+   ZSLOT( idleAllPeriod );
+   ZSLOT( idlePeriod );
+   ZSLOT( ioWaitPeriod );
+   ZSLOT( irqPeriod );
+   ZSLOT( softIrqPeriod );
+   ZSLOT( stealPeriod );
+   ZSLOT( totalPeriod );
+   ZSLOT( userTime );
+   ZSLOT( niceTime );
+   ZSLOT( systemTime );
+   ZSLOT( systemAllTime );
+   ZSLOT( idleAllTime );
+   ZSLOT( idleTime );
+   ZSLOT( ioWaitTime );
+   ZSLOT( irqTime );
+   ZSLOT( softIrqTime );
+   ZSLOT( stealTime );
+   ZSLOT( totalTime );
 
-      for (int i = 1; i <= cpu_count; i++) {
-         unsigned long long int ioWait, irq, softIrq, steal;
+   for (int i = 1; i <= cpu_count; i++) {
+      unsigned long long int ioWait, irq, softIrq, steal;
 
-         usertime   = cpu_load[i-1].cpu_ticks[CPU_STATE_USER];
-         nicetime   = cpu_load[i-1].cpu_ticks[CPU_STATE_NICE];
-         systemtime = cpu_load[i-1].cpu_ticks[CPU_STATE_SYSTEM];
-         idletime   = cpu_load[i-1].cpu_ticks[CPU_STATE_IDLE];
-         ioWait     = 0;
-         irq        = 0;
-         softIrq    = 0;
-         steal      = 0;
+      usertime   = cpu_load[i-1].cpu_ticks[CPU_STATE_USER];
+      nicetime   = cpu_load[i-1].cpu_ticks[CPU_STATE_NICE];
+      systemtime = cpu_load[i-1].cpu_ticks[CPU_STATE_SYSTEM];
+      idletime   = cpu_load[i-1].cpu_ticks[CPU_STATE_IDLE];
+      ioWait     = 0;
+      irq        = 0;
+      softIrq    = 0;
+      steal      = 0;
 
-         idlealltime = idletime + ioWait;
-         systemalltime = systemtime + irq + softIrq + steal;
-         totaltime = usertime + nicetime + systemalltime + idlealltime;
+      idlealltime = idletime + ioWait;
+      systemalltime = systemtime + irq + softIrq + steal;
+      totaltime = usertime + nicetime + systemalltime + idlealltime;
 
-         UPSLOT( userPeriod,      usertime - this->userTime[i] );
-         UPSLOT( nicePeriod,      nicetime - this->niceTime[i] );
-         UPSLOT( systemPeriod,    systemtime - this->systemTime[i] );
-         UPSLOT( systemAllPeriod, systemalltime - this->systemAllTime[i] );
-         UPSLOT( idleAllPeriod,   idlealltime - this->idleAllTime[i] );
-         UPSLOT( idlePeriod,      idletime - this->idleTime[i] );
-         UPSLOT( ioWaitPeriod,    ioWait - this->ioWaitTime[i] );
-         UPSLOT( irqPeriod,       irq - this->irqTime[i] );
-         UPSLOT( softIrqPeriod,   softIrq - this->softIrqTime[i] );
-         UPSLOT( stealPeriod,     steal - this->stealTime[i] );
-         UPSLOT( totalPeriod,     totaltime - this->totalTime[i] );
-         UPSLOT( userTime,        usertime );
-         UPSLOT( niceTime,        nicetime );
-         UPSLOT( systemTime,      systemtime );
-         UPSLOT( systemAllTime,   systemalltime );
-         UPSLOT( idleAllTime,     idlealltime );
-         UPSLOT( idleTime,        idletime );
-         UPSLOT( ioWaitTime,      ioWait );
-         UPSLOT( irqTime,         irq );
-         UPSLOT( softIrqTime,     softIrq );
-         UPSLOT( stealTime,       steal );
-         UPSLOT( totalTime,       totaltime );
-      }
-
-      vm_deallocate(mach_task_self(),
-                     (vm_address_t)cpu_load,
-                     (vm_size_t)(cpu_msg_count * sizeof(*cpu_load)));
+      UPSLOT( userPeriod,      usertime - this->userTime[i] );
+      UPSLOT( nicePeriod,      nicetime - this->niceTime[i] );
+      UPSLOT( systemPeriod,    systemtime - this->systemTime[i] );
+      UPSLOT( systemAllPeriod, systemalltime - this->systemAllTime[i] );
+      UPSLOT( idleAllPeriod,   idlealltime - this->idleAllTime[i] );
+      UPSLOT( idlePeriod,      idletime - this->idleTime[i] );
+      UPSLOT( ioWaitPeriod,    ioWait - this->ioWaitTime[i] );
+      UPSLOT( irqPeriod,       irq - this->irqTime[i] );
+      UPSLOT( softIrqPeriod,   softIrq - this->softIrqTime[i] );
+      UPSLOT( stealPeriod,     steal - this->stealTime[i] );
+      UPSLOT( totalPeriod,     totaltime - this->totalTime[i] );
+      UPSLOT( userTime,        usertime );
+      UPSLOT( niceTime,        nicetime );
+      UPSLOT( systemTime,      systemtime );
+      UPSLOT( systemAllTime,   systemalltime );
+      UPSLOT( idleAllTime,     idlealltime );
+      UPSLOT( idleTime,        idletime );
+      UPSLOT( ioWaitTime,      ioWait );
+      UPSLOT( irqTime,         irq );
+      UPSLOT( softIrqTime,     softIrq );
+      UPSLOT( stealTime,       steal );
+      UPSLOT( totalTime,       totaltime );
    }
 
-   float period = (float)this->totalPeriod[0] / processors;
+   vm_deallocate(mach_task_self(),
+                  (vm_address_t)cpu_load,
+                  (vm_size_t)(cpu_msg_count * sizeof(*cpu_load)));
+
+   float period = (float)this->totalPeriod[0] / cpu_count;
 
    // mark all process as "dirty"
    for (int i = 0; i < Vector_size(this->processes); i++) {

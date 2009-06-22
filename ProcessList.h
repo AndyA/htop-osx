@@ -47,7 +47,7 @@ in the source distribution for its full text.
 #include <assert.h>
 
 #ifndef PROCDIR
-#define PROCDIR "./proc"
+#define PROCDIR "../proc"
 #endif
 
 #ifndef PROCSTATFILE
@@ -86,6 +86,7 @@ typedef struct ProcessList_ {
    int processorCount;
    int totalTasks;
    int runningTasks;
+   vm_size_t pageSize;
 
    // Must match number of PER_PROCESSOR_FIELDS constant
    unsigned long long int* totalTime;
