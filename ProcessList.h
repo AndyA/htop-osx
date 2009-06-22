@@ -206,21 +206,6 @@ typedef struct kinfo {
 } KINFO;
 
 
-#ifdef DEBUG_PROC
-
-#define ProcessList_read(this, buffer, format, ...) ProcessList_xread(this, (vxscanf) vsscanf, buffer, format, ## __VA_ARGS__ )
-#define ProcessList_fread(this, file, format, ...)  ProcessList_xread(this, (vxscanf) vfscanf, file, format, ## __VA_ARGS__ )
-
-#else
-
-#ifndef ProcessList_read
-#define ProcessList_fopen(this, path, mode) fopen(path, mode)
-#define ProcessList_read(this, buffer, format, ...) sscanf(buffer, format, ## __VA_ARGS__ )
-#define ProcessList_fread(this, file, format, ...) fscanf(file, format, ## __VA_ARGS__ )
-#endif
-
-#endif
-
 ProcessList* ProcessList_new(UsersTable* usersTable);
 
 void ProcessList_delete(ProcessList* this);
@@ -234,12 +219,6 @@ Process* ProcessList_get(ProcessList* this, int index);
 int ProcessList_size(ProcessList* this);
 
 void ProcessList_sort(ProcessList* this);
-
-#ifdef HAVE_TASKSTATS
-
-#endif
-
-/* huh? */
 
 void ProcessList_scan(ProcessList* this);
 

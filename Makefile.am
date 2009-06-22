@@ -6,7 +6,7 @@ endif
 
 bin_PROGRAMS = htop
 dist_man_MANS = htop.1
-EXTRA_DIST = $(dist_man_MANS) htop.desktop htop.png scripts/MakeHeader.py \
+EXTRA_DIST = $(dist_man_MANS) htop.desktop htop.png \
 install-sh autogen.sh missing
 applicationsdir = $(datadir)/applications
 applications_DATA = htop.desktop
@@ -54,9 +54,3 @@ hardened-debug:
  
 debuglite:
 	$(MAKE) all CFLAGS="-ggdb -DDEBUGLITE"
-
-.c.h:
-	scripts/MakeHeader.py $<
-
-
-
