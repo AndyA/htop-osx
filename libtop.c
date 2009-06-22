@@ -45,7 +45,6 @@
 #include <IOKit/storage/IOBlockStorageDriver.h>
 
 #include <fcntl.h>
-#include <kvm.h>
 #include <nlist.h>
 #include <sys/param.h>
 #include <sys/sysctl.h>
@@ -177,10 +176,6 @@ static mach_port_t libtop_port;
 static char *libtop_arg;
 static int libtop_argmax;
 
-static kvm_t *libtop_kvmd;
-static struct nlist libtop_nlist_net[2];
-static mach_port_t libtop_master_port;
-
 /*
  * Memory object hash table and list.  For each sample, a hash table of memory
  * objects is created, and it is used to determine various per-process memory
@@ -221,8 +216,6 @@ libtop_p_print(void *a_user_data, const char *a_format, ...);
 static int
 libtop_p_mach_state_order(int a_state, long a_sleep_time);
 static boolean_t
-libtop_p_kread(u_long a_addr, void *r_buf, size_t a_nbytes);
-static boolean_t
 libtop_p_load_get(host_cpu_load_info_t r_load);
 static boolean_t
 libtop_p_loadavg_update(void);
@@ -230,10 +223,6 @@ static void
 libtop_p_fw_sample(boolean_t a_fw);
 static boolean_t
 libtop_p_vm_sample(void);
-static void
-libtop_p_networks_sample(void);
-static boolean_t
-libtop_p_disks_sample(void);
 static boolean_t
 libtop_p_proc_table_read(boolean_t a_reg);
 static boolean_t
@@ -267,7 +256,6 @@ boolean_t
 libtop_init(libtop_print_t *a_print, void *a_user_data)
 {
 	boolean_t	retval;
-	char		errbuf[_POSIX2_LINE_MAX];
 
 	if (a_print != NULL) {
 		libtop_print = a_print;
@@ -316,41 +304,6 @@ libtop_init(libtop_print_t *a_print, void *a_user_data)
 			retval = TRUE;
 			goto RETURN;
 		}
-	}
-
-	/*
-	 * Initialize the kvm descriptor and get the location of _ifnet in
-	 * preparation for gathering network statistics.
-	 */
-	libtop_kvmd = kvm_openfiles(NULL, NULL, NULL, O_RDONLY, errbuf);
-	if (libtop_kvmd == NULL) {
-		libtop_print(libtop_user_data,
-		    "Error in kvm_openfiles(): %s", errbuf);
-		retval = TRUE;
-		goto RETURN;
-	}
-	libtop_nlist_net[0].n_name = "_ifnet";
-	libtop_nlist_net[1].n_name = NULL;
-	if (kvm_nlist(libtop_kvmd, libtop_nlist_net) < 0) {
-		libtop_print(libtop_user_data,
-		    "Error in kvm_nlist(): %s", kvm_geterr(libtop_kvmd));
-		retval = TRUE;
-		goto RETURN;
-	}
-	if (libtop_nlist_net[0].n_type == N_UNDF) {
-		libtop_print(libtop_user_data, "No nlist for _ifnet");
-		retval = TRUE;
-		goto RETURN;
-	}
-
-	/*
-	 * Get ports and services for drive statistics.
-	 */
-
-	if (IOMasterPort(bootstrap_port, &libtop_master_port)) {
-		libtop_print(libtop_user_data, "Error in IOMasterPort()");
-		retval = TRUE;
-		goto RETURN;
 	}
 
 	/* Initialize the load statistics. */
@@ -456,19 +409,6 @@ libtop_sample(boolean_t a_reg, boolean_t a_fw)
 	 * Get system-wide memory usage.
 	 */
 	if (libtop_p_vm_sample()) {
-		retval = TRUE;
-		goto RETURN;
-	}
-
-	/*
-	 * Get network statistics.
-	 */
-	libtop_p_networks_sample();
-
-	/*
-	 * Get disk statistics.
-	 */
-	if (libtop_p_disks_sample()) {
 		retval = TRUE;
 		goto RETURN;
 	}
@@ -728,26 +668,6 @@ libtop_p_mach_state_order(int a_state, long a_sleep_time)
 	return retval;
 }
 
-/* Read data from kernel memory. */
-static boolean_t
-libtop_p_kread(u_long a_addr, void *r_buf, size_t a_nbytes)
-{
-	boolean_t	retval;
-
-	assert(r_buf != NULL);
-
-	if (kvm_read(libtop_kvmd, a_addr, r_buf, a_nbytes) != a_nbytes) {
-		libtop_print(libtop_user_data, "Error in kvm_read(): %s",
-		    kvm_geterr(libtop_kvmd));
-		retval = TRUE;
-		goto RETURN;
-	}
-
-	retval = FALSE;
-	RETURN:
-	return retval;
-}
-
 /* Get CPU load. */
 static boolean_t
 libtop_p_load_get(host_cpu_load_info_t r_load)
@@ -810,7 +730,7 @@ libtop_p_fw_sample(boolean_t a_fw)
 	vm_region_submap_info_data_64_t	sinfo;
 	mach_msg_type_number_t		count;
 	vm_size_t			size;
-	int				depth;
+	unsigned				depth;
 	vm_address_t			addr;
 
 	tsamp.fw_count = 0;
@@ -920,206 +840,6 @@ libtop_p_vm_sample(void)
 
 	retval = FALSE;
 	RETURN:
-	return retval;
-}
-
-/*
- * Sample network usage.
- *
- * The algorithm used does not deal with the following conditions, which can
- * cause the statistics to be invalid:
- *
- * 1) Interface counters are 32 bit counters.  Given the speed of current
- *    interfaces, the counters can overflow (wrap) in a matter of seconds.  No
- *    effort is made to detect or correct counter overflow.
- *
- * 2) Interfaces are dynamic -- they can appear and disappear at any time.
- *    There is no way to get statistics on an interface that has disappeared, so
- *    it isn't possible to determine the amount of data transfer between the
- *    previous sample and when the interface went away.
- *
- *    Due to this problem, if an interface disappears, it is possible for the
- *    current sample values to be lower than those of the beginning or previous
- *    samples.
- */
-static void
-libtop_p_networks_sample(void)
-{
-	struct ifnet		ifnet;
-	struct ifnethead	ifnethead;
-	u_long			off;
-	char			tname[16];
-
-	tsamp.p_net_ipackets = tsamp.net_ipackets;
-	tsamp.p_net_opackets = tsamp.net_opackets;
-	tsamp.p_net_ibytes = tsamp.net_ibytes;
-	tsamp.p_net_obytes = tsamp.net_obytes;
-
-	tsamp.net_ipackets = 0;
-	tsamp.net_opackets = 0;
-	tsamp.net_ibytes = 0;
-	tsamp.net_obytes = 0;
-	if (libtop_nlist_net[0].n_value != 0
-	    && libtop_p_kread(libtop_nlist_net[0].n_value, &ifnethead,
-	    sizeof(ifnethead)) == FALSE) {
-		for (off = (u_long)ifnethead.tqh_first;
-		     off != 0;
-		     off = (u_long)ifnet.if_link.tqe_next) {
-			if (libtop_p_kread(off, &ifnet, sizeof(ifnet))) {
-				break;
-			}
-			if (libtop_p_kread((u_long)ifnet.if_name, tname,
-			    sizeof(tname))) {
-				break;
-			}
-			if (strncmp(tname, "lo", 2)) {
-				/* Not a loopback device. */
-				tsamp.net_ipackets += ifnet.if_ipackets;
-				tsamp.net_opackets += ifnet.if_opackets;
-
-				tsamp.net_ibytes += ifnet.if_ibytes;
-				tsamp.net_obytes += ifnet.if_obytes;
-			}
-		}
-	}
-	if (tsamp.seq == 1) {
-		tsamp.b_net_ipackets = tsamp.net_ipackets;
-		tsamp.p_net_ipackets = tsamp.net_ipackets;
-
-		tsamp.b_net_opackets = tsamp.net_opackets;
-		tsamp.p_net_opackets = tsamp.net_opackets;
-
-		tsamp.b_net_ibytes = tsamp.net_ibytes;
-		tsamp.p_net_ibytes = tsamp.net_ibytes;
-
-		tsamp.b_net_obytes = tsamp.net_obytes;
-		tsamp.p_net_obytes = tsamp.net_obytes;
-	}
-}
-
-/*
- * Sample disk usage.  The algorithm used has the same limitations as that used
- * for libtop_p_networks_sample().
- */
-static boolean_t
-libtop_p_disks_sample(void)
-{
-	boolean_t		retval;
-	io_registry_entry_t	drive;
-	io_iterator_t		drive_list;
-	CFNumberRef		number;
-	CFDictionaryRef		properties, statistics;
-	UInt64			value;
-
-	/* Get the list of all drive objects. */
-	if (IOServiceGetMatchingServices(libtop_master_port,
-	    IOServiceMatching("IOBlockStorageDriver"), &drive_list)) {
-		libtop_print(libtop_user_data,
-		    "Error in IOServiceGetMatchingServices()");
-		retval = TRUE;
-		goto ERROR_NOLIST;
-	}
-
-	tsamp.p_disk_rops = tsamp.disk_rops;
-	tsamp.p_disk_wops = tsamp.disk_wops;
-	tsamp.p_disk_rbytes = tsamp.disk_rbytes;
-	tsamp.p_disk_wbytes = tsamp.disk_wbytes;
-
-	tsamp.disk_rops = 0;
-	tsamp.disk_wops = 0;
-	tsamp.disk_rbytes = 0;
-	tsamp.disk_wbytes = 0;
-	while ((drive = IOIteratorNext(drive_list)) != 0) {
-		number = 0;
-		properties = 0;
-		statistics = 0;
-		value = 0;
-
-		/* Obtain the properties for this drive object. */
-		if (IORegistryEntryCreateCFProperties(drive,
-		    (CFMutableDictionaryRef *)&properties, kCFAllocatorDefault,
-		    kNilOptions)) {
-			libtop_print(libtop_user_data,
-			    "Error in IORegistryEntryCreateCFProperties()");
-			retval = TRUE;
-			goto RETURN;
-		}
-
-		if (properties != 0) {
-			/* Obtain the statistics from the drive properties. */
-			statistics
-			    = (CFDictionaryRef)CFDictionaryGetValue(properties,
-			    CFSTR(kIOBlockStorageDriverStatisticsKey));
-
-			if (statistics != 0) {
-				/* Get number of reads. */
-				number =
-				    (CFNumberRef)CFDictionaryGetValue(statistics,
-				    CFSTR(kIOBlockStorageDriverStatisticsReadsKey));
-				if (number != 0) {
-					CFNumberGetValue(number,
-					    kCFNumberSInt64Type, &value);
-					tsamp.disk_rops += value;
-				}
-
-				/* Get bytes read. */
-				number =
-				    (CFNumberRef)CFDictionaryGetValue(statistics,
-				    CFSTR(kIOBlockStorageDriverStatisticsBytesReadKey));
-				if (number != 0) {
-					CFNumberGetValue(number,
-					    kCFNumberSInt64Type, &value);
-					tsamp.disk_rbytes += value;
-				}
-
-				/* Get number of writes. */
-				number =
-				    (CFNumberRef)CFDictionaryGetValue(statistics,
-				    CFSTR(kIOBlockStorageDriverStatisticsWritesKey));
-				if (number != 0) {
-					CFNumberGetValue(number,
-					    kCFNumberSInt64Type, &value);
-					tsamp.disk_wops += value;
-				}
-
-				/* Get bytes written. */
-				number =
-				    (CFNumberRef)CFDictionaryGetValue(statistics,
-				    CFSTR(kIOBlockStorageDriverStatisticsBytesWrittenKey));
-				if (number != 0) {
-					CFNumberGetValue(number,
-					    kCFNumberSInt64Type, &value);
-					tsamp.disk_wbytes += value;
-				}
-			}
-
-			/* Release. */
-			CFRelease(properties);
-		}
-
-		/* Release. */
-		IOObjectRelease(drive);
-	}
-	IOIteratorReset(drive_list);
-	if (tsamp.seq == 1) {
-		tsamp.b_disk_rops = tsamp.disk_rops;
-		tsamp.p_disk_rops = tsamp.disk_rops;
-
-		tsamp.b_disk_wops = tsamp.disk_wops;
-		tsamp.p_disk_wops = tsamp.disk_wops;
-
-		tsamp.b_disk_rbytes = tsamp.disk_rbytes;
-		tsamp.p_disk_rbytes = tsamp.disk_rbytes;
-
-		tsamp.b_disk_wbytes = tsamp.disk_wbytes;
-		tsamp.p_disk_wbytes = tsamp.disk_wbytes;
-	}
-
-	retval = FALSE;
-	RETURN:
-	/* Release. */
-	IOObjectRelease(drive_list);
-	ERROR_NOLIST:
 	return retval;
 }
 

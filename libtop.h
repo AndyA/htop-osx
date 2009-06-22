@@ -126,39 +126,6 @@ typedef struct {
 #define LIBTOP_STATE_MAXLEN	(sizeof("unknown") - 1)
 	int			state_breakdown[LIBTOP_NSTATES];
 
-	/* Network statistics. */
-	unsigned long long	net_ipackets;
-	unsigned long long	b_net_ipackets;
-	unsigned long long	p_net_ipackets;
-
-	unsigned long long	net_opackets;
-	unsigned long long	b_net_opackets;
-	unsigned long long	p_net_opackets;
-
-	unsigned long long	net_ibytes;
-	unsigned long long	b_net_ibytes;
-	unsigned long long	p_net_ibytes;
-
-	unsigned long long	net_obytes;
-	unsigned long long	b_net_obytes;
-	unsigned long long	p_net_obytes;
-
-	/* Disk statistics. */
-	unsigned long long	disk_rops;
-	unsigned long long	b_disk_rops;
-	unsigned long long	p_disk_rops;
-
-	unsigned long long	disk_wops;
-	unsigned long long	b_disk_wops;
-	unsigned long long	p_disk_wops;
-
-	unsigned long long	disk_rbytes;
-	unsigned long long	b_disk_rbytes;
-	unsigned long long	p_disk_rbytes;
-
-	unsigned long long	disk_wbytes;
-	unsigned long long	b_disk_wbytes;
-	unsigned long long	p_disk_wbytes;
 } libtop_tsamp_t;
 
 /*
