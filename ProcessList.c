@@ -41,6 +41,7 @@ in the source distribution for its full text.
 #include <mach/processor_info.h>
 
 #include "debug.h"
+#include "util.h"
 #include <assert.h>
 
 /*{
@@ -235,8 +236,8 @@ ProcessList* ProcessList_new(UsersTable* usersTable) {
    #endif
 
    infoCount = HOST_BASIC_INFO_COUNT;
-   host_info(mach_host_self(), HOST_BASIC_INFO, 
-               (host_info_t) &hostInfo, &infoCount);
+   noerr(host_info(mach_host_self(), HOST_BASIC_INFO, 
+               (host_info_t) &hostInfo, &infoCount));
    this->processorCount = hostInfo.avail_cpus;
    this->totalMem       = hostInfo.max_mem / 1024;
 
@@ -285,7 +286,7 @@ void ProcessList_delete(ProcessList* this) {
    #endif
 
    free(this->fields);
-   free(this);
+/*   free(this);*/
 }
 
 void ProcessList_invertSortOrder(ProcessList* this) {
@@ -751,22 +752,22 @@ void ProcessList_scan(ProcessList* this) {
 
    infoCount = sizeof(vm_statistics_data_t) / sizeof(integer_t);
 
-   host_statistics(mach_host_self(), HOST_VM_INFO,
-         (host_info_t) &vm_stat, &infoCount);
+   noerr(host_statistics(mach_host_self(), HOST_VM_INFO,
+                           (host_info_t) &vm_stat, &infoCount));
 
 /*
-   integer_t       free_count;
-   integer_t       active_count;
-   integer_t       inactive_count;
-   integer_t       wire_count;
-   integer_t       zero_fill_count;
-   integer_t       reactivations;
-   integer_t       pageins;
-   integer_t       pageouts;
-   integer_t       faults;
-   integer_t       cow_faults;
-   integer_t       lookups;
-   integer_t       hits;
+   free_count;
+   active_count;
+   inactive_count;
+   wire_count;
+   zero_fill_count;
+   reactivations;
+   pageins;
+   pageouts;
+   faults;
+   cow_faults;
+   lookups;
+   hits;
 */
 
    this->freeMem    = this->pageSize * vm_stat.free_count / 1024;
@@ -783,10 +784,10 @@ void ProcessList_scan(ProcessList* this) {
    processor_cpu_load_info_t cpu_load;
    mach_msg_type_number_t cpu_msg_count;
 
-   host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+   noerr(host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
                            &cpu_count,
                            (processor_info_array_t *)&cpu_load,
-                           &cpu_msg_count);
+                           &cpu_msg_count));
 
 #define ZSLOT( n ) \
    do { this->n[0] = 0; } while (0)

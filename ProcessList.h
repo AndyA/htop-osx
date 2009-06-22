@@ -44,6 +44,7 @@ in the source distribution for its full text.
 #include <mach/processor_info.h>
 
 #include "debug.h"
+#include "util.h"
 #include <assert.h>
 
 #ifndef PROCDIR
