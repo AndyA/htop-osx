@@ -789,7 +789,7 @@ static int get_task_info(KINFO *ki) {
 	return 0;
 }
 
-static void getproclline(KINFO *k, char **command_name, int *cmdlen, int eflg, int show_args) {
+static void getproclline(KINFO *k, char *command_name, size_t bufsize, int *cmdlen, int eflg, int show_args) {
 	int		mib[3], argmax, nargs, c = 0;
 	size_t		size;
 	char		*procargs, *sp, *np, *cp;
@@ -956,7 +956,7 @@ static void getproclline(KINFO *k, char **command_name, int *cmdlen, int eflg, i
 	}
 
 	/* Make a copy of the string. */
-	*cmdlen = asprintf(command_name, "%s", sp);
+	*cmdlen = snprintf(command_name, bufsize, "%s", sp);
 
 	/* Clean up. */
 	free(procargs);
@@ -965,13 +965,23 @@ static void getproclline(KINFO *k, char **command_name, int *cmdlen, int eflg, i
 	ERROR_B:
 	free(procargs);
 	ERROR_A:
-	*cmdlen = asprintf(command_name, "(%s)", KI_PROC(k)->p_comm);
+	*cmdlen = snprintf(command_name, bufsize, "(%s)", KI_PROC(k)->p_comm);
+}
+
+static int ProcessList_decodeState(int st) {
+   switch (st) {
+   case SIDL:     return 'C';
+   case SRUN:     return 'R';
+   case SSLEEP:   return 'S';
+   case SSTOP:    return 'T'; 
+   case SZOMB:    return 'Z';
+   default:       return '?';
+   }
 }
 
 static bool ProcessList_getProcesses(ProcessList *this, float period) {
 	struct kinfo_proc *kprocbuf = NULL;
 	size_t bufSize = 0;
-	int nentries;
 	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0 };
 
    Process* prototype = this->prototype;
@@ -994,11 +1004,9 @@ static bool ProcessList_getProcesses(ProcessList *this, float period) {
 		KINFO kinfo;
 		memset(&kinfo, 0, sizeof(kinfo));
 		KINFO *ki = &kinfo;
-      char *command_name;
-      int state, cmdlen, pid;
+      char command_name[512];
+      int cmdlen, pid;
 		time_value_t total_time, system_time, user_time;
-
-      char command[PROCESS_COMM_LEN + 1];
 
 		ki->ki_p = kp;
 
@@ -1025,9 +1033,7 @@ static bool ProcessList_getProcesses(ProcessList *this, float period) {
 
       process->updated = true;
 
-		state = p->p_stat == SZOMB ? SZOMB : ki->state;
-
-		getproclline (ki, &command_name, &cmdlen, 0, 1);
+		getproclline (ki, command_name, sizeof(command_name), &cmdlen, 0, 1);
 
 		user_time = ki->tasks_info.user_time;
 		time_value_add (&user_time, &ki->times.user_time);
@@ -1045,7 +1051,8 @@ static bool ProcessList_getProcesses(ProcessList *this, float period) {
       process->m_drs         = 0; // TODO library
       process->m_dt          = 0; // TODO dirty
 
-      process->state         = p->p_stat == SZOMB ? SZOMB : ki->state;
+      process->state         = 
+         ProcessList_decodeState(p->p_stat == SZOMB ? SZOMB : ki->state);
       process->ppid          = e->e_ppid;
       process->pgrp          = e->e_pgid; // TODO check this
       //process->session       = e->e_sess;
@@ -1065,14 +1072,10 @@ static bool ProcessList_getProcesses(ProcessList *this, float period) {
       process->processor     = 0;         // TODO
       //process->vpid          = 0;         // TODO
       //process->cpid          = 0;         // TODO
-      process->comm          = cmdlen ? command_name : "(none)";
+      if (process->comm) free(process->comm);
+      process->comm          = cmdlen ? String_copy(command_name) : NULL;
 
-#ifndef	TH_USAGE_SCALE
-#define	TH_USAGE_SCALE	1000
-#endif	TH_USAGE_SCALE
-#define usage_to_percent(u)	((u*100)/TH_USAGE_SCALE)
-
-      process->percent_cpu   = usage_to_percent(ki->cpu_usage); 
+      process->percent_cpu   = ki->cpu_usage * 100 / TH_USAGE_SCALE; 
       process->percent_mem   = ((float) ki->tasks_info.resident_size) 
                                              * 100 / this->totalMem / 1024;
       
@@ -1083,20 +1086,9 @@ static bool ProcessList_getProcesses(ProcessList *this, float period) {
          process = Process_clone(process);
          ProcessList_add(this, process);
       }
-
-      continue;
-
-      // Exception handler.
-      errorReadingProcess: {
-         if (process->comm) {
-            free(process->comm);
-            process->comm = NULL;
-         }
-         if (existingProcess)
-            ProcessList_remove(this, process);
-         assert(Hashtable_count(this->processTable) == Vector_count(this->processes));
-      }
    }
+
+   free(kprocbuf);
 
    return true;
 }
