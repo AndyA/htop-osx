@@ -35,15 +35,15 @@
  * per-process basis, used byt libtop_preg().
  */
 typedef enum {
-	/*
-	 * Collect memory region information iff libtop_sample()'s a_reg
-	 * parameter is TRUE.
-	 */
-	LIBTOP_PREG_default = 0,
-	/* Do not collect memory region information. */
-	LIBTOP_PREG_off,
-	/* Always collect memory region information. */
-	LIBTOP_PREG_on
+  /*
+   * Collect memory region information iff libtop_sample()'s a_reg
+   * parameter is TRUE.
+   */
+  LIBTOP_PREG_default = 0,
+  /* Do not collect memory region information. */
+  LIBTOP_PREG_off,
+  /* Always collect memory region information. */
+  LIBTOP_PREG_on
 } libtop_preg_t;
 
 /*
@@ -51,7 +51,8 @@ typedef enum {
  * occurs.  libtop does not print a '\n' at the end of the string, so it is
  * up to the printing function to add it if desired.
  */
-typedef boolean_t libtop_print_t (void *a_user_data, const char *a_format, ...);
+typedef boolean_t libtop_print_t( void *a_user_data, const char *a_format,
+                                  ... );
 
 /*
  * General sample information.
@@ -62,69 +63,69 @@ typedef boolean_t libtop_print_t (void *a_user_data, const char *a_format, ...);
  *   p_ : Value for previous sample (same as b_ if p_seq is 0).
  */
 typedef struct {
-	/*
-	 * Sample sequence number, incremented for every sample.  The first
-	 * sample has a sequence number of 1.
-	 */
-	unsigned		seq;
+  /*
+   * Sample sequence number, incremented for every sample.  The first
+   * sample has a sequence number of 1.
+   */
+  unsigned seq;
 
-	/* Number of processes. */
-	unsigned		nprocs;
+  /* Number of processes. */
+  unsigned nprocs;
 
-	/* CPU loads. */
-	host_cpu_load_info_data_t cpu;
-	host_cpu_load_info_data_t b_cpu;
-	host_cpu_load_info_data_t p_cpu;
+  /* CPU loads. */
+  host_cpu_load_info_data_t cpu;
+  host_cpu_load_info_data_t b_cpu;
+  host_cpu_load_info_data_t p_cpu;
 
-	/* Load averages for 1, 5, and 15 minutes. */
-	float			loadavg[3];
+  /* Load averages for 1, 5, and 15 minutes. */
+  float loadavg[3];
 
-	/* Start time, previous sample time, and current sample time. */
-	struct timeval		time;
-	struct timeval		b_time;
-	struct timeval		p_time;
+  /* Start time, previous sample time, and current sample time. */
+  struct timeval time;
+  struct timeval b_time;
+  struct timeval p_time;
 
-	/* Total number of threads. */
-	unsigned		threads;
+  /* Total number of threads. */
+  unsigned threads;
 
-	/* VM page size. */
-	vm_size_t		pagesize;
+  /* VM page size. */
+  vm_size_t pagesize;
 
-	/* VM statistics. */
-	vm_statistics_data_t	vm_stat;
-	vm_statistics_data_t	b_vm_stat;
-	vm_statistics_data_t	p_vm_stat;
+  /* VM statistics. */
+  vm_statistics_data_t vm_stat;
+  vm_statistics_data_t b_vm_stat;
+  vm_statistics_data_t p_vm_stat;
 
-	/* Total number of memory regions. */
-	unsigned		reg;
+  /* Total number of memory regions. */
+  unsigned reg;
 
-	/* Total shared, private, virtual sizes. */
-	unsigned long long	rshrd;
-	unsigned long long	rprvt;
-	unsigned long long	vsize;
+  /* Total shared, private, virtual sizes. */
+  unsigned long long rshrd;
+  unsigned long long rprvt;
+  unsigned long long vsize;
 
-	/* Total private resident memory used by frameworks. */
-	unsigned long long	fw_private;
+  /* Total private resident memory used by frameworks. */
+  unsigned long long fw_private;
 
-	/* Total virtual memory used by frameworks. */
-	unsigned long long	fw_vsize;
+  /* Total virtual memory used by frameworks. */
+  unsigned long long fw_vsize;
 
-	/* Number of frameworks. */
-	unsigned		fw_count;
+  /* Number of frameworks. */
+  unsigned fw_count;
 
-	/* Code size of frameworks. */
-	vm_size_t		fw_code;
+  /* Code size of frameworks. */
+  vm_size_t fw_code;
 
-	/* Data size of frameworks. */
-	vm_size_t		fw_data;
+  /* Data size of frameworks. */
+  vm_size_t fw_data;
 
-	/* Linkedit size of frameworks. */
-	vm_size_t		fw_linkedit;
+  /* Linkedit size of frameworks. */
+  vm_size_t fw_linkedit;
 
 #define LIBTOP_STATE_MAX	7
 #define LIBTOP_NSTATES		(LIBTOP_STATE_MAX + 1)
 #define LIBTOP_STATE_MAXLEN	(sizeof("unknown") - 1)
-	int			state_breakdown[LIBTOP_NSTATES];
+  int state_breakdown[LIBTOP_NSTATES];
 
 } libtop_tsamp_t;
 
@@ -138,61 +139,61 @@ typedef struct {
  */
 typedef struct libtop_psamp_s libtop_psamp_t;
 struct libtop_psamp_s {
-	uid_t			uid;
-	pid_t			pid;
-	pid_t			ppid;
-	gid_t			pgrp;
+  uid_t uid;
+  pid_t pid;
+  pid_t ppid;
+  gid_t pgrp;
 
-	/* Memory statistics. */
-	vm_size_t		rsize;
-	vm_size_t		vsize;
-	vm_size_t		rprvt;
-	vm_size_t		vprvt;
-	vm_size_t		rshrd;
-	unsigned		reg;
+  /* Memory statistics. */
+  vm_size_t rsize;
+  vm_size_t vsize;
+  vm_size_t rprvt;
+  vm_size_t vprvt;
+  vm_size_t rshrd;
+  unsigned reg;
 
-	vm_size_t		p_rsize;
-	vm_size_t		p_vprvt;
-	vm_size_t		p_vsize;
-	vm_size_t		p_rprvt;
-	vm_size_t		p_rshrd;
+  vm_size_t p_rsize;
+  vm_size_t p_vprvt;
+  vm_size_t p_vsize;
+  vm_size_t p_rprvt;
+  vm_size_t p_rshrd;
 
-	/* Number of threads. */
-	unsigned		th;
+  /* Number of threads. */
+  unsigned th;
 
-	/* Number of ports. */
-	unsigned		prt;
-	unsigned		p_prt;
+  /* Number of ports. */
+  unsigned prt;
+  unsigned p_prt;
 
-	/* CPU state/usage statistics. */
-	int			state; /* Process state. */
+  /* CPU state/usage statistics. */
+  int state;                    /* Process state. */
 
-	/* System time consumed by process. */
-	struct timeval		system_time;
-	struct timeval		b_system_time;
-	struct timeval		p_system_time;
-  
-	/* User time consumed by process. */
-	struct timeval		user_time;
-	struct timeval		b_user_time;
-	struct timeval		p_user_time;
+  /* System time consumed by process. */
+  struct timeval system_time;
+  struct timeval b_system_time;
+  struct timeval p_system_time;
 
-	/* Event counters. */
-	task_events_info_data_t	events;
-	task_events_info_data_t	b_events;
-	task_events_info_data_t	p_events;
+  /* User time consumed by process. */
+  struct timeval user_time;
+  struct timeval b_user_time;
+  struct timeval p_user_time;
 
-	/* malloc()ed '\0'-terminated string. */
-	char			*command;
+  /* Event counters. */
+  task_events_info_data_t events;
+  task_events_info_data_t b_events;
+  task_events_info_data_t p_events;
 
-	/* Sequence number, used to detect defunct processes. */
-	unsigned		seq;
+  /* malloc()ed '\0'-terminated string. */
+  char *command;
 
-	/*
-	 * Previous sequence number, used to detect processes that have only
-	 * existed for the current sample (p_seq == 0).
-	 */
-	unsigned		p_seq;
+  /* Sequence number, used to detect defunct processes. */
+  unsigned seq;
+
+  /*
+   * Previous sequence number, used to detect processes that have only
+   * existed for the current sample (p_seq == 0).
+   */
+  unsigned p_seq;
 };
 
 /*
@@ -202,12 +203,11 @@ struct libtop_psamp_s {
  * FALSE : Success.
  * TRUE : Error.
  */
-boolean_t
-libtop_init(libtop_print_t *a_print, void *a_user_data);
+boolean_t libtop_init( libtop_print_t * a_print, void *a_user_data );
 
 /* Shut down libtop. */
 void
-libtop_fini(void);
+ libtop_fini( void );
 
 /*
  * Take a sample.
@@ -220,8 +220,7 @@ libtop_fini(void);
  * FALSE : Success.
  * TRUE : Error.
  */
-boolean_t
-libtop_sample(boolean_t a_reg, boolean_t a_fw);
+boolean_t libtop_sample( boolean_t a_reg, boolean_t a_fw );
 
 /*
  * Return a pointer to a structure containing the generic information collected
@@ -229,8 +228,7 @@ libtop_sample(boolean_t a_reg, boolean_t a_fw);
  * used for the duration of program execution (i.e. the return value does not
  * change between samples).
  */
-const libtop_tsamp_t *
-libtop_tsamp(void);
+const libtop_tsamp_t *libtop_tsamp( void );
 
 /*
  * Type for psamp comparison function.
@@ -242,15 +240,15 @@ libtop_tsamp(void);
  *                  0 : Second argument equal to third argument.
  *                  1 : Second argument greater than third argument.
  */
-typedef int libtop_sort_t (void *, const libtop_psamp_t *,
-    const libtop_psamp_t *);
+typedef int libtop_sort_t( void *, const libtop_psamp_t *,
+                           const libtop_psamp_t * );
 
 /*
  * Sort processes using a_sort().  Pass a_data as the opaque data pointer to
  * a_sort().
  */
 void
-libtop_psort(libtop_sort_t *a_sort, void *a_data);
+ libtop_psort( libtop_sort_t * a_sort, void *a_data );
 
 /*
  * Iteratively return a pointer to each process which was in the most recent
@@ -261,8 +259,7 @@ libtop_psort(libtop_sort_t *a_sort, void *a_data);
  * A NULL return value indicates that there are no more processes to iterate
  * over.
  */
-const libtop_psamp_t *
-libtop_piterate(void);
+const libtop_psamp_t *libtop_piterate( void );
 
 /*
  * Set whether to collect memory region information for the process with pid
@@ -271,19 +268,16 @@ libtop_piterate(void);
  * FALSE : Success.
  * TRUE : Error.
  */
-boolean_t
-libtop_preg(pid_t a_pid, libtop_preg_t a_preg);
+boolean_t libtop_preg( pid_t a_pid, libtop_preg_t a_preg );
 
 /*
  * Return a pointer to a username string (truncated to the first 8 characters),
  * given a uid.  If the uid cannot be matched to a username, NULL is returned.
  */
-const char *
-libtop_username(uid_t a_uid);
+const char *libtop_username( uid_t a_uid );
 
 /*
  * Return a pointer to a string representation of a process state (names of
  * states that are contained in libtop_tsamp_t's state_breakdown array).
  */
-const char *
-libtop_state_str(unsigned a_state);
+const char *libtop_state_str( unsigned a_state );
