@@ -739,7 +739,8 @@ static bool ProcessList_processEntries(ProcessList* this, char* dirname, Process
 }
 
 void ProcessList_scan(ProcessList* this) {
-   unsigned long long int usertime, nicetime, systemtime, systemalltime, idlealltime, idletime, totaltime;
+   unsigned long long int usertime, nicetime, systemtime, 
+                 systemalltime, idlealltime, idletime, totaltime;
    unsigned long long int swapFree;
 
    FILE* status;
@@ -780,103 +781,91 @@ void ProcessList_scan(ProcessList* this) {
    this->usedSwap = this->totalSwap - swapFree;
    fclose(status);
 
-   status = ProcessList_fopen(this, PROCSTATFILE, "r");
-
-   assert(status != NULL);
-   for (int i = 0; i <= processors; i++) {
-      char buffer[256];
-      int cpuid;
-      unsigned long long int ioWait, irq, softIrq, steal;
-      ioWait = irq = softIrq = steal = 0;
-      // Dependending on your kernel version,
-      // 5, 7 or 8 of these fields will be set.
-      // The rest will remain at zero.
-      fgets(buffer, 255, status);
-      if (i == 0)
-         ProcessList_read(this, buffer, "cpu  %llu %llu %llu %llu %llu %llu %llu %llu", &usertime, &nicetime, &systemtime, &idletime, &ioWait, &irq, &softIrq, &steal);
-      else {
-         ProcessList_read(this, buffer, "cpu%d %llu %llu %llu %llu %llu %llu %llu %llu", &cpuid, &usertime, &nicetime, &systemtime, &idletime, &ioWait, &irq, &softIrq, &steal);
-         assert(cpuid == i - 1);
-      }
-      // Fields existing on kernels >= 2.6
-      // (and RHEL's patched kernel 2.4...)
-      idlealltime = idletime + ioWait;
-      systemalltime = systemtime + irq + softIrq + steal;
-      totaltime = usertime + nicetime + systemalltime + idlealltime;
-      assert (usertime >= this->userTime[i]);
-      assert (nicetime >= this->niceTime[i]);
-      assert (systemtime >= this->systemTime[i]);
-      assert (idletime >= this->idleTime[i]);
-      assert (totaltime >= this->totalTime[i]);
-      assert (systemalltime >= this->systemAllTime[i]);
-      assert (idlealltime >= this->idleAllTime[i]);
-      assert (ioWait >= this->ioWaitTime[i]);
-      assert (irq >= this->irqTime[i]);
-      assert (softIrq >= this->softIrqTime[i]);
-      assert (steal >= this->stealTime[i]);
-      this->userPeriod[i] = usertime - this->userTime[i];
-      this->nicePeriod[i] = nicetime - this->niceTime[i];
-      this->systemPeriod[i] = systemtime - this->systemTime[i];
-      this->systemAllPeriod[i] = systemalltime - this->systemAllTime[i];
-      this->idleAllPeriod[i] = idlealltime - this->idleAllTime[i];
-      this->idlePeriod[i] = idletime - this->idleTime[i];
-      this->ioWaitPeriod[i] = ioWait - this->ioWaitTime[i];
-      this->irqPeriod[i] = irq - this->irqTime[i];
-      this->softIrqPeriod[i] = softIrq - this->softIrqTime[i];
-      this->stealPeriod[i] = steal - this->stealTime[i];
-      this->totalPeriod[i] = totaltime - this->totalTime[i];
-      this->userTime[i] = usertime;
-      this->niceTime[i] = nicetime;
-      this->systemTime[i] = systemtime;
-      this->systemAllTime[i] = systemalltime;
-      this->idleAllTime[i] = idlealltime;
-      this->idleTime[i] = idletime;
-      this->ioWaitTime[i] = ioWait;
-      this->irqTime[i] = irq;
-      this->softIrqTime[i] = softIrq;
-      this->stealTime[i] = steal;
-      this->totalTime[i] = totaltime;
-   }
-
    {
-      mach_msg_type_number_t count;
-      processor_array_t pport;
-      host_t host;
-      host_processors(mach_host_self(), &pport, &count); 
+      unsigned int cpu_count;
+      processor_cpu_load_info_t cpu_load;
+      mach_msg_type_number_t cpu_msg_count;
+      kern_return_t kret;
 
-      this->userPeriod[0]   = 0; 
-      this->nicePeriod[0]   = 0;
-      this->systemPeriod[0] = 0;
-      this->idlePeriod[0]   = 0;
-      this->totalTime[0]    = 0;
+      host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                              &cpu_count,
+                              (processor_info_array_t *)&cpu_load,
+                              &cpu_msg_count);
 
-      for (int i = 1; i <= count; i++) {
-         struct processor_cpu_load_info load;
-         count = PROCESSOR_CPU_LOAD_INFO_COUNT;
-         processor_info(pport[i-1], PROCESSOR_CPU_LOAD_INFO, 
-                           &host, (processor_info_t) &load, &count);
+#define ZSLOT( n ) \
+      do { this->n[0] = 0; } while (0)
+#define UPSLOT( n, v ) \
+      do { this->n[i] = (v); this->n[0] += this->n[i]; } while (0)
 
-         int usertime   = load.cpu_ticks[CPU_STATE_USER];
-         int nicetime   = load.cpu_ticks[CPU_STATE_NICE];
-         int systemtime = load.cpu_ticks[CPU_STATE_SYSTEM];
-         int idletime   = load.cpu_ticks[CPU_STATE_IDLE];
+      ZSLOT( userPeriod );
+      ZSLOT( nicePeriod );
+      ZSLOT( systemPeriod );
+      ZSLOT( systemAllPeriod );
+      ZSLOT( idleAllPeriod );
+      ZSLOT( idlePeriod );
+      ZSLOT( ioWaitPeriod );
+      ZSLOT( irqPeriod );
+      ZSLOT( softIrqPeriod );
+      ZSLOT( stealPeriod );
+      ZSLOT( totalPeriod );
+      ZSLOT( userTime );
+      ZSLOT( niceTime );
+      ZSLOT( systemTime );
+      ZSLOT( systemAllTime );
+      ZSLOT( idleAllTime );
+      ZSLOT( idleTime );
+      ZSLOT( ioWaitTime );
+      ZSLOT( irqTime );
+      ZSLOT( softIrqTime );
+      ZSLOT( stealTime );
+      ZSLOT( totalTime );
 
-         this->userPeriod[i]   = usertime - this->userTime[i];
-         this->nicePeriod[i]   = nicetime - this->niceTime[i];
-         this->systemPeriod[i] = systemtime - this->systemTime[i];
-         this->idlePeriod[i]   = idletime - this->idleTime[i];
-         this->totalTime[i]    = usertime + nicetime + systemtime + idletime;
+      for (int i = 1; i <= cpu_count; i++) {
+         unsigned long long int ioWait, irq, softIrq, steal;
 
-         this->userPeriod[0]   += this->userPeriod[i];
-         this->nicePeriod[0]   += this->nicePeriod[i];
-         this->systemPeriod[0] += this->systemPeriod[i];
-         this->idlePeriod[0]   += this->idlePeriod[i];
-         this->totalTime[0]    += this->totalTime[i];
+         usertime   = cpu_load[i-1].cpu_ticks[CPU_STATE_USER];
+         nicetime   = cpu_load[i-1].cpu_ticks[CPU_STATE_NICE];
+         systemtime = cpu_load[i-1].cpu_ticks[CPU_STATE_SYSTEM];
+         idletime   = cpu_load[i-1].cpu_ticks[CPU_STATE_IDLE];
+         ioWait     = 0;
+         irq        = 0;
+         softIrq    = 0;
+         steal      = 0;
+
+         idlealltime = idletime + ioWait;
+         systemalltime = systemtime + irq + softIrq + steal;
+         totaltime = usertime + nicetime + systemalltime + idlealltime;
+
+         UPSLOT( userPeriod,      usertime - this->userTime[i] );
+         UPSLOT( nicePeriod,      nicetime - this->niceTime[i] );
+         UPSLOT( systemPeriod,    systemtime - this->systemTime[i] );
+         UPSLOT( systemAllPeriod, systemalltime - this->systemAllTime[i] );
+         UPSLOT( idleAllPeriod,   idlealltime - this->idleAllTime[i] );
+         UPSLOT( idlePeriod,      idletime - this->idleTime[i] );
+         UPSLOT( ioWaitPeriod,    ioWait - this->ioWaitTime[i] );
+         UPSLOT( irqPeriod,       irq - this->irqTime[i] );
+         UPSLOT( softIrqPeriod,   softIrq - this->softIrqTime[i] );
+         UPSLOT( stealPeriod,     steal - this->stealTime[i] );
+         UPSLOT( totalPeriod,     totaltime - this->totalTime[i] );
+         UPSLOT( userTime,        usertime );
+         UPSLOT( niceTime,        nicetime );
+         UPSLOT( systemTime,      systemtime );
+         UPSLOT( systemAllTime,   systemalltime );
+         UPSLOT( idleAllTime,     idlealltime );
+         UPSLOT( idleTime,        idletime );
+         UPSLOT( ioWaitTime,      ioWait );
+         UPSLOT( irqTime,         irq );
+         UPSLOT( softIrqTime,     softIrq );
+         UPSLOT( stealTime,       steal );
+         UPSLOT( totalTime,       totaltime );
       }
+
+      vm_deallocate(mach_task_self(),
+                     (vm_address_t)cpu_load,
+                     (vm_size_t)(cpu_msg_count * sizeof(*cpu_load)));
    }
 
    float period = (float)this->totalPeriod[0] / processors;
-   fclose(status);
 
    // mark all process as "dirty"
    for (int i = 0; i < Vector_size(this->processes); i++) {
