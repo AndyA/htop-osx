@@ -167,10 +167,15 @@ struct libtop_psamp_s {
 	/* CPU state/usage statistics. */
 	int			state; /* Process state. */
 
-	/* Total time consumed by process. */
-	struct timeval		total_time;
-	struct timeval		b_total_time;
-	struct timeval		p_total_time;
+	/* System time consumed by process. */
+	struct timeval		system_time;
+	struct timeval		b_system_time;
+	struct timeval		p_system_time;
+  
+	/* User time consumed by process. */
+	struct timeval		user_time;
+	struct timeval		b_user_time;
+	struct timeval		p_user_time;
 
 	/* Event counters. */
 	task_events_info_data_t	events;

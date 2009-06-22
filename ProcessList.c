@@ -322,65 +322,64 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
     if ( pid == 0 )
       continue;
 
-    Process *process = NULL;
+    Process *p = NULL;
     Process *existingProcess =
         ( Process * ) Hashtable_get( this->processTable, pid );
 
     if ( existingProcess ) {
       assert( Vector_indexOf( this->processes, existingProcess,
                               Process_pidCompare ) != -1 );
-      process = existingProcess;
-      assert( process->pid == pid );
+      p = existingProcess;
+      assert( p->pid == pid );
     }
     else {
-      process = this->prototype;
-      assert( process->comm == NULL );
-      process->pid = pid;
+      p = this->prototype;
+      assert( p->comm == NULL );
+      p->pid = pid;
     }
 
-    process->updated = true;
-    process->st_uid = proc->uid;
-    process->m_size = proc->vsize / 1024;
-    process->m_resident = proc->rsize / 1024;
-    process->m_share = proc->rshrd / 1024;
-    process->m_trs = 0;         // TODO code
-    process->m_lrs = 0;         // TODO data/stack
-    process->m_drs = 0;         // TODO library
-    process->m_dt = 0;          // TODO dirty
-    process->state = ProcessList_decodeState( proc->state );
-    process->ppid = proc->ppid;
-    process->pgrp = proc->pgrp;
-    process->session = 0;       // TODO
-    process->tty_nr = 0;        // TODO
-    process->tgid = pid;        // TODO check this
-    process->tpgid = 0;         // TODO
-    process->tgid = pid;        // TODO check this
-    process->tpgid = 0;         // TODO
-    process->flags = 0;
-    // TODO how do we get the broken down time?
-    process->utime = proc->total_time.tv_sec;
-    process->stime = 0;
-    process->cutime = 0;        // TODO 
-    process->cstime = 0;        // TODO
-    process->priority = 0;      // TODO
-    process->nice = 0;          // TODO
-    process->nlwp = 0;          // TODO
-    process->exit_signal = 0;   // TODO
-    process->processor = 0;     // TODO
-    //process->vpid          = 0;         // TODO
-    //process->cpid          = 0;         // TODO
+    p->updated = true;
+    p->st_uid = proc->uid;
+    p->m_size = proc->vsize / 1024;
+    p->m_resident = proc->rsize / 1024;
+    p->m_share = proc->rshrd / 1024;
+    p->m_trs = 0;               // TODO code
+    p->m_lrs = 0;               // TODO data/stack
+    p->m_drs = 0;               // TODO library
+    p->m_dt = 0;                // TODO dirty
+    p->state = ProcessList_decodeState( proc->state );
+    p->ppid = proc->ppid;
+    p->pgrp = proc->pgrp;
+    p->session = 0;             // TODO
+    p->tty_nr = 0;              // TODO
+    p->tpgid = 0;               // TODO
+    p->tgid = pid;              // TODO check this
+    p->tpgid = 0;               // TODO
+    p->flags = 0;
+    p->utime = proc->user_time.tv_sec;
+    p->stime = proc->system_time.tv_sec;
+    p->cutime = 0;              // TODO 
+    p->cstime = 0;              // TODO
+    p->priority = 0;            // TODO
+    p->nice = 0;                // TODO
+    p->nlwp = 0;                // TODO
+    p->exit_signal = 0;         // TODO
+    p->processor = 0;           // TODO
+    //p->vpid          = 0;         // TODO
+    //p->cpid          = 0;         // TODO
 
-    process->comm = proc->command;
+    p->comm = proc->command;
 
-    process->percent_cpu = 0;   //ki->cpu_usage * 100 / TH_USAGE_SCALE;
-    process->percent_mem = process->m_resident * 100 / this->totalMem;
+    p->percent_cpu = 0;         //ki->cpu_usage * 100 / TH_USAGE_SCALE;
+    p->percent_mem = p->m_resident * 100 / this->totalMem;
 
-    if ( process->state == 'R' )
+    this->totalTasks++;
+    if ( p->state == 'R' )
       this->runningTasks++;
 
     if ( !existingProcess ) {
-      process = Process_clone( process );
-      ProcessList_add( this, process );
+      p = Process_clone( p );
+      ProcessList_add( this, p );
     }
 
   }

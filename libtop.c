@@ -1340,12 +1340,11 @@ libtop_p_task_update(task_t a_task, boolean_t a_reg)
 	 */
 
 	/* Make copies of previous sample values. */
-	pinfo->psamp.p_total_time = pinfo->psamp.total_time;
+	pinfo->psamp.p_system_time = pinfo->psamp.system_time;
+	pinfo->psamp.p_user_time = pinfo->psamp.user_time;
 
-	/* Set total_time. */
-	TIME_VALUE_TO_TIMEVAL(&ti.user_time, &pinfo->psamp.total_time);
-	TIME_VALUE_TO_TIMEVAL(&ti.system_time, &tv);
-	timeradd(&pinfo->psamp.total_time, &tv, &pinfo->psamp.total_time);
+	TIME_VALUE_TO_TIMEVAL(&ti.system_time, &pinfo->psamp.system_time);
+	TIME_VALUE_TO_TIMEVAL(&ti.user_time, &pinfo->psamp.user_time);
 
 	state = LIBTOP_STATE_MAX;
 	pinfo->psamp.state = LIBTOP_STATE_MAX;
@@ -1370,11 +1369,11 @@ libtop_p_task_update(task_t a_task, boolean_t a_reg)
 		    (thread_info_t)thi, &count) == KERN_SUCCESS) {
 			if ((thi->flags & TH_FLAGS_IDLE) == 0) {
 				TIME_VALUE_TO_TIMEVAL(&thi->user_time, &tv);
-				timeradd(&pinfo->psamp.total_time, &tv,
-				    &pinfo->psamp.total_time);
+				timeradd(&pinfo->psamp.user_time, &tv,
+				    &pinfo->psamp.user_time);
 				TIME_VALUE_TO_TIMEVAL(&thi->system_time, &tv);
-				timeradd(&pinfo->psamp.total_time, &tv,
-				    &pinfo->psamp.total_time);
+				timeradd(&pinfo->psamp.system_time, &tv,
+				    &pinfo->psamp.system_time);
 			}
 			tstate = libtop_p_mach_state_order(thi->run_state,
 			    thi->sleep_time);
@@ -1383,6 +1382,7 @@ libtop_p_task_update(task_t a_task, boolean_t a_reg)
 				pinfo->psamp.state = tstate;
 			}
 		}
+
 		if (a_task != mach_task_self()) {
 			if ((error = mach_port_deallocate(mach_task_self(),
 			    thread_table[i])) != KERN_SUCCESS) {
@@ -1406,8 +1406,10 @@ libtop_p_task_update(task_t a_task, boolean_t a_reg)
 
 	if (pinfo->psamp.p_seq == 0) {
 		/* Set initial values. */
-		pinfo->psamp.b_total_time = pinfo->psamp.total_time;
-		pinfo->psamp.p_total_time = pinfo->psamp.total_time;
+		pinfo->psamp.b_system_time = pinfo->psamp.system_time;
+		pinfo->psamp.p_system_time = pinfo->psamp.system_time;
+		pinfo->psamp.b_user_time = pinfo->psamp.user_time;
+		pinfo->psamp.p_user_time = pinfo->psamp.user_time;
 	}
 
 	/*
