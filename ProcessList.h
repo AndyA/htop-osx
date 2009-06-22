@@ -26,22 +26,36 @@ in the source distribution for its full text.
 #include "Hashtable.h"
 #include "String.h"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <dirent.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <sys/utsname.h>
-#include <stdarg.h>
-
 #include <mach/host_info.h>
 #include <mach/mach_host.h>
+#include <mach/mach_init.h>
 #include <mach/mach_interface.h>
+#include <mach/mach_port.h>
+#include <mach/mach_traps.h>
+#include <mach/mach_types.h>
 #include <mach/machine.h>
 #include <mach/processor_info.h>
+#include <mach/shared_memory_server.h>
+#include <mach/task.h>
+#include <mach/thread_act.h>
+#include <mach/time_value.h>
+#include <mach/vm_map.h>
+#include <sys/proc.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+
+#include <signal.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "debug.h"
 #include "util.h"
@@ -70,6 +84,10 @@ in the source distribution for its full text.
 #ifndef PER_PROCESSOR_FIELDS
 #define PER_PROCESSOR_FIELDS 22
 #endif
+
+#define KI_PROC(ki) (&(ki)->ki_p->kp_proc)
+#define KI_EPROC(ki) (&(ki)->ki_p->kp_eproc)
+#define STATE_MAX       7
 
 
 
@@ -141,6 +159,53 @@ typedef struct ProcessList_ {
 
 } ProcessList;
 
+
+
+typedef struct thread_values {
+	struct thread_basic_info tb;
+	union {
+		struct policy_timeshare_info tshare;
+		struct policy_rr_info rr;
+		struct policy_fifo_info fifo;
+	} schedinfo;
+} thread_values_t;
+
+
+
+struct usave {
+	struct	timeval u_start;
+	struct	rusage u_ru;
+	struct	rusage u_cru;
+	char	u_acflag;
+	char	u_valid;
+};
+
+typedef struct kinfo {
+	struct kinfo_proc *ki_p;
+	struct usave ki_u;
+	char *ki_args;
+	char *ki_env;
+	task_port_t task;
+	int state;
+	int cpu_usage;
+	int curpri;
+	int basepri;
+	int swapped;
+	struct task_basic_info tasks_info;
+	struct task_thread_times_info times;
+	union {
+		struct policy_timeshare_info tshare;
+		struct policy_rr_info rr;
+		struct policy_fifo_info fifo;
+	} schedinfo;
+	int	invalid_tinfo;
+	mach_msg_type_number_t	thread_count;
+	thread_port_array_t thread_list;
+	thread_values_t *thval;
+	int	invalid_thinfo;
+} KINFO;
+
+
 #ifdef DEBUG_PROC
 
 #define ProcessList_read(this, buffer, format, ...) ProcessList_xread(this, (vxscanf) vsscanf, buffer, format, ## __VA_ARGS__ )
@@ -173,6 +238,8 @@ void ProcessList_sort(ProcessList* this);
 #ifdef HAVE_TASKSTATS
 
 #endif
+
+/* huh? */
 
 void ProcessList_scan(ProcessList* this);
 

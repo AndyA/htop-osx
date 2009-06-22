@@ -5,11 +5,14 @@
 /* util.c */
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
-#include <mach/kern_return.h>
 
 void
-noerr( kern_return_t rc );
+die( const char *msg, ... );
+
+void
+noerr( int rc );
 
 /* vim:ts=2:sw=2:sts=2:et:ft=c 
  */

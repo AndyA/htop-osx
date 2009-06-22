@@ -23,22 +23,36 @@ in the source distribution for its full text.
 #include "Hashtable.h"
 #include "String.h"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <dirent.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <sys/utsname.h>
-#include <stdarg.h>
-
 #include <mach/host_info.h>
 #include <mach/mach_host.h>
+#include <mach/mach_init.h>
 #include <mach/mach_interface.h>
+#include <mach/mach_port.h>
+#include <mach/mach_traps.h>
+#include <mach/mach_types.h>
 #include <mach/machine.h>
 #include <mach/processor_info.h>
+#include <mach/shared_memory_server.h>
+#include <mach/task.h>
+#include <mach/thread_act.h>
+#include <mach/time_value.h>
+#include <mach/vm_map.h>
+#include <sys/proc.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+
+#include <signal.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "debug.h"
 #include "util.h"
@@ -68,6 +82,10 @@ in the source distribution for its full text.
 #ifndef PER_PROCESSOR_FIELDS
 #define PER_PROCESSOR_FIELDS 22
 #endif
+
+#define KI_PROC(ki) (&(ki)->ki_p->kp_proc)
+#define KI_EPROC(ki) (&(ki)->ki_p->kp_eproc)
+#define STATE_MAX       7
 
 }*/
 
@@ -140,6 +158,57 @@ typedef struct ProcessList_ {
    #endif
 
 } ProcessList;
+
+}*/
+
+/*{
+
+typedef struct thread_values {
+	struct thread_basic_info tb;
+	union {
+		struct policy_timeshare_info tshare;
+		struct policy_rr_info rr;
+		struct policy_fifo_info fifo;
+	} schedinfo;
+} thread_values_t;
+
+}*/
+
+/*{
+
+struct usave {
+	struct	timeval u_start;
+	struct	rusage u_ru;
+	struct	rusage u_cru;
+	char	u_acflag;
+	char	u_valid;
+};
+
+typedef struct kinfo {
+	struct kinfo_proc *ki_p;
+	struct usave ki_u;
+	char *ki_args;
+	char *ki_env;
+	task_port_t task;
+	int state;
+	int cpu_usage;
+	int curpri;
+	int basepri;
+	int swapped;
+	struct task_basic_info tasks_info;
+	struct task_thread_times_info times;
+	union {
+		struct policy_timeshare_info tshare;
+		struct policy_rr_info rr;
+		struct policy_fifo_info fifo;
+	} schedinfo;
+	int	invalid_tinfo;
+	mach_msg_type_number_t	thread_count;
+	thread_port_array_t thread_list;
+	thread_values_t *thval;
+	int	invalid_thinfo;
+} KINFO;
+
 }*/
 
 static ProcessField defaultHeaders[] = { PID, USER, PRIORITY, NICE, M_SIZE, M_RESIDENT, M_SHARE, STATE, PERCENT_CPU, PERCENT_MEM, TIME, COMM, 0 };
@@ -531,6 +600,404 @@ static void ProcessList_readIoFile(ProcessList* this, Process* proc, char* dirna
 
 #endif
 
+/* huh? */
+
+static int ProcessList_MachStateOrder(int s, long sleep_time) {
+	switch (s) {
+	case TH_STATE_RUNNING:		      return 1;
+	case TH_STATE_UNINTERRUPTIBLE:   return 2;
+	case TH_STATE_WAITING:		      return (sleep_time > 20) ? 4 : 3;
+	case TH_STATE_STOPPED:		      return 5;
+	case TH_STATE_HALTED:		      return 6;  
+	default:					            return 7; 
+	}
+}
+
+static int thread_schedinfo(KINFO *ki, thread_port_t thread, policy_t pol, void * buf) {
+	unsigned int		count;
+	int ret = KERN_FAILURE;
+
+	switch (pol) {
+
+	case POLICY_TIMESHARE:
+		count = POLICY_TIMESHARE_INFO_COUNT;
+		ret = thread_info(thread, THREAD_SCHED_TIMESHARE_INFO,
+					(thread_info_t)buf, &count);
+		if((ret == KERN_SUCCESS) && (ki->curpri < (((struct policy_timeshare_info *)buf)->cur_priority)))
+			ki->curpri  = ((struct policy_timeshare_info *)buf)->cur_priority;
+		break;
+
+	case POLICY_FIFO:
+		count = POLICY_FIFO_INFO_COUNT;
+		ret = thread_info(thread, THREAD_SCHED_FIFO_INFO,
+					buf, &count);
+		if((ret == KERN_SUCCESS) && (ki->curpri < (((struct policy_fifo_info *)buf)->base_priority)))
+			ki->curpri  = ((struct policy_fifo_info *)buf)->base_priority;
+		break;
+
+	case POLICY_RR:
+		count = POLICY_RR_INFO_COUNT;
+		ret = thread_info(thread, THREAD_SCHED_RR_INFO,
+					buf, &count);
+		if((ret == KERN_SUCCESS) && (ki->curpri < (((struct policy_rr_info *)buf)->base_priority)))
+			ki->curpri  = ((struct policy_rr_info *)buf)->base_priority;
+		break;
+	}
+	return ret;
+}
+
+static int get_task_info(KINFO *ki) {
+	kern_return_t   	error;
+	unsigned int		info_count = TASK_BASIC_INFO_COUNT;
+	unsigned int 		thread_info_count = THREAD_BASIC_INFO_COUNT;
+	pid_t				pid;
+	int j, err = 0;
+
+	pid = KI_PROC(ki)->p_pid;
+	if (task_for_pid(mach_task_self(), pid, &ki->task) != KERN_SUCCESS) {
+		return 1;
+	}
+	info_count = TASK_BASIC_INFO_COUNT;
+	error = task_info(ki->task, TASK_BASIC_INFO, 
+         (task_info_t) &ki->tasks_info, &info_count);
+
+	if (error != KERN_SUCCESS) {
+		ki->invalid_tinfo=1;
+		return 1;
+	}
+
+	{
+		vm_region_basic_info_data_64_t	b_info;
+		vm_address_t					address = GLOBAL_SHARED_TEXT_SEGMENT;
+		vm_size_t					size;
+		mach_port_t					object_name;
+
+		/*
+		 * try to determine if this task has the split libraries
+		 * mapped in... if so, adjust its virtual size down by
+		 * the 2 segments that are used for split libraries
+		 */
+		info_count = VM_REGION_BASIC_INFO_COUNT_64;
+		error = vm_region_64(ki->task, &address, &size, VM_REGION_BASIC_INFO,
+					(vm_region_info_t)&b_info, &info_count, &object_name);
+		if (error == KERN_SUCCESS) {
+			if (b_info.reserved && size == (SHARED_TEXT_REGION_SIZE) &&
+				ki->tasks_info.virtual_size > 
+            (SHARED_TEXT_REGION_SIZE + SHARED_DATA_REGION_SIZE))
+					ki->tasks_info.virtual_size -= 
+                  (SHARED_TEXT_REGION_SIZE + SHARED_DATA_REGION_SIZE);
+		}
+	}
+	info_count = TASK_THREAD_TIMES_INFO_COUNT;
+	error = task_info(ki->task, TASK_THREAD_TIMES_INFO,
+         (task_info_t) &ki->times, &info_count);
+	if (error != KERN_SUCCESS) {
+		ki->invalid_tinfo=1;
+		return 1;
+	}
+
+	switch(ki->tasks_info.policy) {
+
+		case POLICY_TIMESHARE :
+			info_count = POLICY_TIMESHARE_INFO_COUNT;
+			error = task_info(ki->task, TASK_SCHED_TIMESHARE_INFO, (task_info_t) &ki->schedinfo.tshare, &info_count);
+			if (error != KERN_SUCCESS) {
+				ki->invalid_tinfo=1;
+				return 1;
+			}
+
+			ki->curpri = ki->schedinfo.tshare.cur_priority;
+			ki->basepri = ki->schedinfo.tshare.base_priority;
+			break;
+
+		case POLICY_RR :
+	 		info_count = POLICY_RR_INFO_COUNT;
+			error = task_info(ki->task, TASK_SCHED_RR_INFO, (task_info_t) &ki->schedinfo.rr, &info_count);
+			if (error != KERN_SUCCESS) {
+				ki->invalid_tinfo=1;
+				return 1;
+			}
+
+			ki->curpri = ki->schedinfo.rr.base_priority;
+			ki->basepri = ki->schedinfo.rr.base_priority;
+			break;
+
+		case POLICY_FIFO :
+			info_count = POLICY_FIFO_INFO_COUNT;
+			error = task_info(ki->task, TASK_SCHED_FIFO_INFO, (task_info_t) &ki->schedinfo.fifo, &info_count);
+			if (error != KERN_SUCCESS) {
+				ki->invalid_tinfo=1;
+				return 1;
+			}
+
+			ki->curpri = ki->schedinfo.fifo.base_priority;
+			ki->basepri = ki->schedinfo.fifo.base_priority;
+			break;
+	}
+
+	ki->invalid_tinfo=0;
+
+	ki->cpu_usage=0;
+	error = task_threads(ki->task, &ki->thread_list, &ki->thread_count);
+	if (error != KERN_SUCCESS) {
+		mach_port_deallocate(mach_task_self(),ki->task);
+		return 1;
+	}
+	err=0;
+	ki->state = STATE_MAX;
+	//ki->curpri = 255;
+	//ki->basepri = 255;
+	ki->swapped = 1;
+	ki->thval = malloc(ki->thread_count * sizeof(struct thread_values));
+	if (ki->thval != NULL) {
+		for (j = 0; j < ki->thread_count; j++) {
+			int tstate;
+			thread_info_count = THREAD_BASIC_INFO_COUNT;
+			error = thread_info(ki->thread_list[j], THREAD_BASIC_INFO,
+				(thread_info_t)&ki->thval[j].tb,
+				&thread_info_count);
+			if (error != KERN_SUCCESS) {
+				err=1;
+			}
+			error = thread_schedinfo(ki, ki->thread_list[j],
+				ki->thval[j].tb.policy, &ki->thval[j].schedinfo);
+			if (error != KERN_SUCCESS) {
+				err=1;
+			}
+			ki->cpu_usage += ki->thval[j].tb.cpu_usage;
+			tstate = ProcessList_MachStateOrder(ki->thval[j].tb.run_state,
+					ki->thval[j].tb.sleep_time);
+			if (tstate < ki->state)
+				ki->state = tstate;
+			if ((ki->thval[j].tb.flags & TH_FLAGS_SWAPPED ) == 0)
+				ki->swapped = 0;
+			mach_port_deallocate(mach_task_self(),
+				ki->thread_list[j]);
+		}
+		free (ki->thval);
+		ki->thval = NULL;
+	}
+	ki->invalid_thinfo = err;
+	/* Deallocate the list of threads. */
+	error = vm_deallocate(mach_task_self(), 
+		(vm_address_t)(ki->thread_list),
+		 sizeof(thread_port_array_t) * ki->thread_count);
+	if (error != KERN_SUCCESS) {
+	}
+
+	mach_port_deallocate(mach_task_self(),ki->task);
+	return 0;
+}
+
+static void getproclline(KINFO *k, char **command_name, int *cmdlen, int eflg, int show_args) {
+	int		mib[3], argmax, nargs, c = 0;
+	size_t		size;
+	char		*procargs, *sp, *np, *cp;
+/*  Made into a command argument. -- TRW
+ *	extern int	eflg;
+ */
+
+	/* Get the maximum process arguments size. */
+	mib[0] = CTL_KERN;
+	mib[1] = KERN_ARGMAX;
+
+	size = sizeof(argmax);
+	if (sysctl(mib, 2, &argmax, &size, NULL, 0) == -1) {
+		goto ERROR_A;
+	}
+
+	/* Allocate space for the arguments. */
+	procargs = (char *)malloc(argmax);
+	if (procargs == NULL) {
+		goto ERROR_A;
+	}
+
+	/*
+	 * Make a sysctl() call to get the raw argument space of the process.
+	 * The layout is documented in start.s, which is part of the Csu
+	 * project.  In summary, it looks like:
+	 *
+	 * /---------------\ 0x00000000
+	 * :               :
+	 * :               :
+	 * |---------------|
+	 * | argc          |
+	 * |---------------|
+	 * | arg[0]        |
+	 * |---------------|
+	 * :               :
+	 * :               :
+	 * |---------------|
+	 * | arg[argc - 1] |
+	 * |---------------|
+	 * | 0             |
+	 * |---------------|
+	 * | env[0]        |
+	 * |---------------|
+	 * :               :
+	 * :               :
+	 * |---------------|
+	 * | env[n]        |
+	 * |---------------|
+	 * | 0             |
+	 * |---------------| <-- Beginning of data returned by sysctl() is here.
+	 * | argc          |
+	 * |---------------|
+	 * | exec_path     |
+	 * |:::::::::::::::|
+	 * |               |
+	 * | String area.  |
+	 * |               |
+	 * |---------------| <-- Top of stack.
+	 * :               :
+	 * :               :
+	 * \---------------/ 0xffffffff
+	 */
+	mib[0] = CTL_KERN;
+	mib[1] = KERN_PROCARGS2;
+	mib[2] = KI_PROC(k)->p_pid;
+
+	size = (size_t)argmax;
+	if (sysctl(mib, 3, procargs, &size, NULL, 0) == -1) {
+		goto ERROR_B;
+	}
+
+	memcpy(&nargs, procargs, sizeof(nargs));
+	cp = procargs + sizeof(nargs);
+
+	/* Skip the saved exec_path. */
+	for (; cp < &procargs[size]; cp++) {
+		if (*cp == '\0') {
+			/* End of exec_path reached. */
+			break;
+		}
+	}
+	if (cp == &procargs[size]) {
+		goto ERROR_B;
+	}
+
+	/* Skip trailing '\0' characters. */
+	for (; cp < &procargs[size]; cp++) {
+		if (*cp != '\0') {
+			/* Beginning of first argument reached. */
+			break;
+		}
+	}
+	if (cp == &procargs[size]) {
+		goto ERROR_B;
+	}
+	/* Save where the argv[0] string starts. */
+	sp = cp;
+
+	/*
+	 * Iterate through the '\0'-terminated strings and convert '\0' to ' '
+	 * until a string is found that has a '=' character in it (or there are
+	 * no more strings in procargs).  There is no way to deterministically
+	 * know where the command arguments end and the environment strings
+	 * start, which is why the '=' character is searched for as a heuristic.
+	 */
+	for (np = NULL; c < nargs && cp < &procargs[size]; cp++) {
+		if (*cp == '\0') {
+			c++;
+			if (np != NULL) {
+				/* Convert previous '\0'. */
+				*np = ' ';
+			}
+			/* Note location of current '\0'. */
+			np = cp;
+
+			if (!show_args) {
+				/*
+				 * Don't convert '\0' characters to ' '.
+				 * However, we needed to know that the
+				 * command name was terminated, which we
+				 * now know.
+				 */
+				break;
+			}
+		}
+	}
+
+	/*
+	 * If eflg is non-zero, continue converting '\0' characters to ' '
+	 * characters until no more strings that look like environment settings
+	 * follow.
+	 */
+	if ( (eflg != 0) && ( (getuid() == 0) || (KI_EPROC(k)->e_pcred.p_ruid == getuid()) ) ) {
+		for (; cp < &procargs[size]; cp++) {
+			if (*cp == '\0') {
+				if (np != NULL) {
+					if (&np[1] == cp) {
+						/*
+						 * Two '\0' characters in a row.
+						 * This should normally only
+						 * happen after all the strings
+						 * have been seen, but in any
+						 * case, stop parsing.
+						 */
+						break;
+					}
+					/* Convert previous '\0'. */
+					*np = ' ';
+				}
+				/* Note location of current '\0'. */
+				np = cp;
+			}
+		}
+	}
+
+	/*
+	 * sp points to the beginning of the arguments/environment string, and
+	 * np should point to the '\0' terminator for the string.
+	 */
+	if (np == NULL || np == sp) {
+		/* Empty or unterminated string. */
+		goto ERROR_B;
+	}
+
+	/* Make a copy of the string. */
+	*cmdlen = asprintf(command_name, "%s", sp);
+
+	/* Clean up. */
+	free(procargs);
+	return;
+
+	ERROR_B:
+	free(procargs);
+	ERROR_A:
+	*cmdlen = asprintf(command_name, "(%s)", KI_PROC(k)->p_comm);
+}
+
+static bool ProcessList_getProcesses(ProcessList *this, float period) {
+	struct kinfo_proc *kp;
+	struct kinfo_proc *kprocbuf = NULL;
+	size_t bufSize = 0;
+	int nentries;
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0 };
+
+	if (sysctl(mib, 4, NULL, &bufSize, NULL, 0) < 0)
+		die("Failure calling sysctl");
+
+	if ((kprocbuf = kp = (struct kinfo_proc *) malloc(bufSize)) == NULL)
+		die("Memory allocation failure");
+
+	if (sysctl(mib, 4, kp, &bufSize, NULL, 0) < 0)
+		die("Failure calling sysctl");
+
+	this->totalTasks = bufSize/ sizeof(struct kinfo_proc);
+
+   for ( int i = 0; i < this->totalTasks; i++ ) {
+		struct extern_proc *p;
+		struct eproc *e;
+		KINFO kinfo;
+		memset(&kinfo, 0, sizeof(kinfo));
+		KINFO *ki = &kinfo;
+		time_value_t total_time, system_time, user_time;
+   }
+
+   return true;
+}
+
 static bool ProcessList_processEntries(ProcessList* this, char* dirname, Process* parent, float period) {
    DIR* dir;
    struct dirent* entry;
@@ -715,7 +1182,7 @@ static bool ProcessList_processEntries(ProcessList* this, char* dirname, Process
             (float)(this->totalMem) * 
             100.0;
 
-         this->totalTasks++;
+         /*this->totalTasks++;*/
          if (process->state == 'R') {
             this->runningTasks++;
          }
@@ -873,6 +1340,7 @@ void ProcessList_scan(ProcessList* this) {
    this->runningTasks = 0;
 
    ProcessList_processEntries(this, PROCDIR, NULL, period);
+   ProcessList_getProcesses(this, period);
    
    for (int i = Vector_size(this->processes) - 1; i >= 0; i--) {
       Process* p = (Process*) Vector_get(this->processes, i);

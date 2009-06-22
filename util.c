@@ -2,15 +2,23 @@
 
 #include "util.h"
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
-#include <mach/kern_return.h>
 
 void
-noerr( kern_return_t rc ) {
-  if ( rc != 0 ) {
-    fprintf( stderr, "Oops: %d\n", rc );
-    exit( 1 );
-  }
+die( const char *msg, ... ) {
+  va_list ap;
+  va_start( ap, msg );
+  fprintf( stderr, "Stopping: " );
+  vfprintf( stderr, msg, ap );
+  va_end( ap );
+  exit( 1 );
+}
+
+void
+noerr( int rc ) {
+  if ( rc != 0 )
+    die( "error %d", rc );
 }
 
 /* vim:ts=2:sw=2:sts=2:et:ft=c 
