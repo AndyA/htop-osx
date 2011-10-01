@@ -651,7 +651,7 @@ int main(int argc, char** argv) {
          
          Panel* affinityPanel = AffinityPanel_new(pl->processorCount, curr);
 
-         char* fuFunctions[2] = {"Set    ", "Cancel "};
+         char* fuFunctions[] = {"Set    ", "Cancel ", NULL};
          void* set = pickFromVector(panel, affinityPanel, 15, headerHeight, fuFunctions, defaultBar);
          if (set) {
             unsigned long new = AffinityPanel_getAffinity(affinityPanel);
@@ -690,7 +690,7 @@ int main(int argc, char** argv) {
       {
          Panel* sortPanel = Panel_new(0, 0, 0, 0, LISTITEM_CLASS, true, ListItem_compare);
          Panel_setHeader(sortPanel, "Sort by");
-         char* fuFunctions[2] = {"Sort  ", "Cancel "};
+         char* fuFunctions[] = {"Sort  ", "Cancel ", NULL};
          ProcessField* fields = pl->fields;
          for (int i = 0; fields[i]; i++) {
             char* name = String_trim(Process_fieldTitles[fields[i]]);
