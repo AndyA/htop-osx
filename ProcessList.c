@@ -744,6 +744,24 @@ ProcessList_decodeState( int st ) {
 }
 
 static bool
+ProcessList_getSwap( ProcessList * this ) {
+  struct xsw_usage swap;
+  size_t bufSize = 0;
+  int mib[2] = { CTL_VM, VM_SWAPUSAGE };
+
+  if ( sysctl( mib, 2, NULL, &bufSize, NULL, 0 ) < 0 )
+    printf( "Failure calling sysctl" );
+
+  if ( sysctl( mib, 2, &swap, &bufSize, NULL, 0 ) < 0 )
+    printf( "Failure calling sysctl" );
+
+  this->totalSwap = swap.xsu_total / 1024;
+  this->freeSwap = swap.xsu_avail / 1024;
+  this->usedSwap = swap.xsu_used / 1024;
+}
+
+
+static bool
 ProcessList_getProcesses( ProcessList * this, float period ) {
   struct kinfo_proc *kprocbuf = NULL;
   size_t bufSize = 0;
@@ -881,11 +899,8 @@ ProcessList_scan( ProcessList * this ) {
   this->sharedMem = 0;
   this->buffersMem = 0;
   this->cachedMem = 0;
-  this->totalSwap = 0;
-  this->freeSwap = 0;
 
   this->usedMem = this->totalMem - this->freeMem;
-  this->usedSwap = this->totalSwap - this->freeSwap;
 
   unsigned int cpu_count;
   processor_cpu_load_info_t cpu_load;
@@ -980,6 +995,7 @@ ProcessList_scan( ProcessList * this ) {
   this->runningTasks = 0;
 
   ProcessList_getProcesses( this, period );
+  ProcessList_getSwap( this );
 
   for ( int i = Vector_size( this->processes ) - 1; i >= 0; i-- ) {
     Process *p = ( Process * ) Vector_get( this->processes, i );
