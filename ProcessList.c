@@ -750,10 +750,10 @@ ProcessList_getSwap( ProcessList * this ) {
   int mib[2] = { CTL_VM, VM_SWAPUSAGE };
 
   if ( sysctl( mib, 2, NULL, &bufSize, NULL, 0 ) < 0 )
-    printf( "Failure calling sysctl" );
+    die( "Failure calling sysctl" );
 
   if ( sysctl( mib, 2, &swap, &bufSize, NULL, 0 ) < 0 )
-    printf( "Failure calling sysctl" );
+    die( "Failure calling sysctl" );
 
   this->totalSwap = swap.xsu_total / 1024;
   this->freeSwap = swap.xsu_avail / 1024;
