@@ -11,6 +11,12 @@
   This "Meter" written by Ian P. Hands (iphands@gmail.com, ihands@redhat.com).
 */
 
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreFoundation/CFDateFormatter.h>
+#include <CoreFoundation/CFString.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
+
 #include "Meter.h"
 #include "ProcessList.h"
 #include "CRT.h"

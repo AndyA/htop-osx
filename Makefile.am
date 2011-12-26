@@ -10,7 +10,7 @@ applications_DATA = htop.desktop
 pixmapdir = $(datadir)/pixmaps
 pixmap_DATA = htop.png
 
-htop_CFLAGS = -pedantic -Wall -std=c99 -D_XOPEN_SOURCE_EXTENDED
+htop_CFLAGS = -pedantic -Wall -std=c99 -D_XOPEN_SOURCE_EXTENDED -framework IOKit -framework CoreFoundation
 AM_CPPFLAGS = -DSYSCONFDIR=\"$(sysconfdir)\"
 
 
