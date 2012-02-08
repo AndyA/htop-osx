@@ -855,6 +855,7 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
 
     if ( !existingProcess ) {
       process = Process_clone( process );
+      process->user = UsersTable_getRef(this->usersTable, process->st_uid);
       ProcessList_add( this, process );
     }
   }

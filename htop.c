@@ -600,11 +600,11 @@ int main(int argc, char** argv) {
          if (picked) {
             if (picked == allUsers) {
                userOnly = false;
-               break;
             } else {
                setUserOnly(ListItem_getRef(picked), &userOnly, &userId);
             }
          }
+         Panel_delete(usersPanel);
          break;
       }
       case KEY_F(9):
