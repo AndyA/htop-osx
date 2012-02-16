@@ -11,6 +11,7 @@ pixmapdir = $(datadir)/pixmaps
 pixmap_DATA = htop.png
 
 htop_CFLAGS = -pedantic -Wall -std=c99 -D_XOPEN_SOURCE_EXTENDED -framework IOKit -framework CoreFoundation
+htop_LDFLAGS = -framework IOKit -framework CoreFoundation
 AM_CPPFLAGS = -DSYSCONFDIR=\"$(sysconfdir)\"
 
 
