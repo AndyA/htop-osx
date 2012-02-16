@@ -58,6 +58,10 @@ in the source distribution for its full text.
 #include "util.h"
 #include <assert.h>
 
+#ifndef PAGE_SIZE
+#define PAGE_SIZE ( sysconf(_SC_PAGESIZE) )
+#endif
+
 static ProcessField defaultHeaders[] =
     { PID, USER, PRIORITY, NICE, M_SIZE, M_RESIDENT, M_SHARE, STATE,
   PERCENT_CPU, PERCENT_MEM, TIME, COMM, 0
@@ -831,9 +835,9 @@ ProcessList_getProcesses( ProcessList * this, float period ) {
     time_value_add( &total_time, &system_time );
 
     process->st_uid = e->e_pcred.p_ruid;
-    process->m_size = ( u_long ) ki->tasks_info.virtual_size / 1024;
-    process->m_resident = ( u_long ) ki->tasks_info.resident_size / 1024;
-    process->m_share = ( u_long ) ( ki->shared / 1024 );
+    process->m_size = ( u_long ) ki->tasks_info.virtual_size / PAGE_SIZE;
+    process->m_resident = ( u_long ) ki->tasks_info.resident_size / PAGE_SIZE;
+    process->m_share = ( u_long ) ( ki->shared / PAGE_SIZE );
     process->m_trs = 0;         // TODO code
     process->m_lrs = 0;         // TODO data/stack
     process->m_drs = 0;         // TODO library
