@@ -5,7 +5,13 @@
   in the source distribution for its full text.
 
   This "Meter" written by Ian P. Hands (iphands@gmail.com, ihands@redhat.com).
+  Adapted for OSX by Jonas Due Vesterheden (jonasduevesterheden@gmail.com)
 */
+
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreFoundation/CFString.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
 
 #include "BatteryMeter.h"
 #include "Meter.h"
@@ -28,84 +34,76 @@ int BatteryMeter_attributes[] = {
    BATTERY
 };
 
-static unsigned long int parseUevent(FILE * file, char *key) {
-   char line[100];
-   unsigned long int dValue = 0;
+static ACPresence chkIsOnline() {
+   CFTypeRef sourceInfo = IOPSCopyPowerSourcesInfo();
+   CFArrayRef sourceList = IOPSCopyPowerSourcesList(sourceInfo);
 
-   while (fgets(line, sizeof line, file)) {
-      if (strncmp(line, key, strlen(key)) == 0) {
-         char *value;
-         value = strtok(line, "=");
-         value = strtok(NULL, "=");
-         dValue = atoi(value);
+   // Loop through sources, find the first battery
+   int count = CFArrayGetCount(sourceList);
+   CFDictionaryRef source = NULL;
+   for(int i=0; i < count; i++) {
+      source = IOPSGetPowerSourceDescription(sourceInfo, CFArrayGetValueAtIndex(sourceList, i));
+
+      // Is this a battery?
+      CFStringRef type = (CFStringRef)CFDictionaryGetValue(source, CFSTR(kIOPSTransportTypeKey));
+      if(kCFCompareEqualTo == CFStringCompare(type, CFSTR(kIOPSInternalType), 0)) {
          break;
       }
    }
-   return dValue;
-}
 
-static ACPresence chkIsOnline() {
-   FILE *file = NULL;
    ACPresence isOn = AC_ERROR;
+   if(source != NULL) {
+      CFStringRef state = CFDictionaryGetValue(source, CFSTR(kIOPSPowerSourceStateKey));
+      if(kCFCompareEqualTo == CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0)) {
+         isOn = AC_PRESENT;
+      } else {
+         isOn = AC_ABSENT;
+      }
+   }
 
+   CFRelease(sourceInfo);
+   CFRelease(sourceList);
    return isOn;
 }
 
-static double getProcBatData() {
-   return 100;
-}
+static double getBatData() {
+   CFTypeRef sourceInfo = IOPSCopyPowerSourcesInfo();
+   CFArrayRef sourceList = IOPSCopyPowerSourcesList(sourceInfo);
 
-static double getSysBatData() {
-   const struct dirent *dirEntries;
-   char *power_supplyPath = "/sys/class/power_supply/";
-   DIR *power_supplyDir = opendir(power_supplyPath);
+   // Loop through sources, find the first battery
+   int count = CFArrayGetCount(sourceList);
+   CFDictionaryRef source = NULL;
+   for(int i=0; i < count; i++) {
+      source = IOPSGetPowerSourceDescription(sourceInfo, CFArrayGetValueAtIndex(sourceList, i));
 
-
-   if (!power_supplyDir) {
-      closedir(power_supplyDir);
-      return 0;
+      // Is this a battery?
+      CFStringRef type = (CFStringRef)CFDictionaryGetValue(source, CFSTR(kIOPSTransportTypeKey));
+      if(kCFCompareEqualTo == CFStringCompare(type, CFSTR(kIOPSInternalType), 0)) {
+         break;
+      }
    }
 
-   char *entryName;
+   float percent = 0;
+   if(source != NULL) {
+      int curCapacity;
+      CFNumberGetValue(CFDictionaryGetValue(source, CFSTR(kIOPSCurrentCapacityKey)), kCFNumberIntType, &curCapacity);
 
-   unsigned long int totalFull = 0;
-   unsigned long int totalRemain = 0;
+      int maxCapacity;
+      CFNumberGetValue(CFDictionaryGetValue(source, CFSTR(kIOPSMaxCapacityKey)), kCFNumberIntType, &maxCapacity);
 
-   for (dirEntries = readdir((DIR *) power_supplyDir); dirEntries; dirEntries = readdir((DIR *) power_supplyDir)) {
-      entryName = (char *) dirEntries->d_name;
-
-      if (strncmp(entryName, "BAT", 3)) {
-         continue;
-      }
-
-      const char ueventPath[50];
-
-      snprintf((char *) ueventPath, sizeof ueventPath, "%s%s/uevent", power_supplyPath, entryName);
-
-      FILE *file;
-      if ((file = fopen(ueventPath, "r")) == NULL) {
-         closedir(power_supplyDir);
-         return 0;
-      }
-
-      totalFull += parseUevent(file, "POWER_SUPPLY_ENERGY_FULL=");
-      totalRemain += parseUevent(file, "POWER_SUPPLY_ENERGY_NOW=");
-      fclose(file);
+      percent = curCapacity / (float)maxCapacity*100.f;
    }
 
-   const double percent = totalFull > 0 ? ((double) totalRemain * 100) / (double) totalFull : 0;
-   closedir(power_supplyDir);
+   CFRelease(sourceInfo);
+   CFRelease(sourceList);
    return percent;
 }
 
 static void BatteryMeter_setValues(Meter * this, char *buffer, int len) {
-   double percent = getProcBatData();
+   double percent = getBatData();
    if (percent == 0) {
-      percent = getSysBatData();
-      if (percent == 0) {
-         snprintf(buffer, len, "n/a");
-         return;
-      }
+     snprintf(buffer, len, "n/a");
+     return;
    }
 
    this->values[0] = percent;
