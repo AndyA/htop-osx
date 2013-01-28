@@ -49,59 +49,72 @@ static void EnvScreen_scan(EnvScreen* this) {
    int mib[3];
    int argmax;
    size_t bufsz = sizeof(argmax);
+   uid_t uid = getuid();
 
    Panel_prune(panel);
    mib[0] = CTL_KERN;
    mib[1] = KERN_ARGMAX;
-   if (sysctl(mib, 2, &argmax, &bufsz, 0, 0) == 0)
+
+   if (uid == 0 || uid == this->process->st_uid)
    {
-      char* buf = malloc(argmax);
-      if (buf)
-      {
-         mib[1] = KERN_PROCARGS2;
-         mib[2] = this->process->pid;
-         bufsz = argmax;
-         if (sysctl(mib, 3, buf, &bufsz, 0, 0) == 0)
-         {
-            if (bufsz > sizeof(int))
-            {
-               char *p = buf, *endp = buf + bufsz;
-               int argc = *(int*)p;
-               p += sizeof(int);
+       if (sysctl(mib, 2, &argmax, &bufsz, 0, 0) == 0)
+       {
+           char* buf = malloc(argmax);
+           if (buf)
+           {
+               mib[1] = KERN_PROCARGS2;
+               mib[2] = this->process->pid;
+               bufsz = argmax;
+               if (sysctl(mib, 3, buf, &bufsz, 0, 0) == 0)
+               {
+                   if (bufsz > sizeof(int))
+                   {
+                       char *p = buf, *endp = buf + bufsz;
+                       int argc = *(int*)p;
+                       p += sizeof(int);
 
-               // skip exe
-               p = strchr(p, 0)+1;
+                       // skip exe
+                       p = strchr(p, 0)+1;
 
-               // skip padding
-               while(!*p && p < endp)
-                  ++p;
+                       // skip padding
+                       while(!*p && p < endp)
+                           ++p;
 
-               // skip argv
-               for (; argc-- && p < endp; p = strrchr(p, 0)+1)
-                   ;
+                       // skip argv
+                       for (; argc-- && p < endp; p = strrchr(p, 0)+1)
+                           ;
 
-               // skip padding
-               while(!*p && p < endp)
-                   ++p;
+                       // skip padding
+                       while(!*p && p < endp)
+                           ++p;
 
-               for (; *p && p < endp; p = strrchr(p, 0)+1)
-                  Panel_add(panel, (Object*) ListItem_new(p, 0));
-            }
-            else
-            {
-               Panel_add(panel, (Object*) ListItem_new("Could not allocate memory.", 0));
-            }
-         }
-         else
-         {
-            Panel_add(panel, (Object*) ListItem_new("sysctl(KERN_PROCARGS2) failed.", 0));
-         }
-         free(buf);
-      }
-      else
-      {
-         Panel_add(panel, (Object*) ListItem_new("sysctl(KERN_ARGMAX) failed.", 0));
-      }
+                       for (; *p && p < endp; p = strrchr(p, 0)+1)
+                           Panel_add(panel, (Object*) ListItem_new(p, 0));
+                   }
+                   else
+                   {
+                       Panel_add(panel, (Object*) ListItem_new("Could not allocate memory.", 0));
+                   }
+               }
+               else
+               {
+                   Panel_add(panel, (Object*) ListItem_new("sysctl(KERN_PROCARGS2) failed.", 0));
+               }
+               free(buf);
+           }
+           else
+           {
+               Panel_add(panel, (Object*) ListItem_new("Out of memory.", 0));
+           }
+       }
+       else
+       {
+           Panel_add(panel, (Object*) ListItem_new("sysctl(KERN_ARGMAX) failed.", 0));
+       }
+   }
+   else
+   {
+       Panel_add(panel, (Object*) ListItem_new("Process belongs to different user", 0));
    }
    Panel_setSelected(panel, idx);
 }

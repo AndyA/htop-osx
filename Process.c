@@ -587,12 +587,16 @@ Process_toggleTag( Process * this ) {
 
 bool
 Process_setPriority( Process * this, int priority ) {
-  int old_prio = getpriority( PRIO_PROCESS, this->pid );
-  int err = setpriority( PRIO_PROCESS, this->pid, priority );
-  if ( err == 0 && old_prio != getpriority( PRIO_PROCESS, this->pid ) ) {
-    this->nice = priority;
+  if ( Process_getuid == 0 || Process_getuid == this->st_uid ) {
+    int old_prio = getpriority( PRIO_PROCESS, this->pid );
+    int err = setpriority( PRIO_PROCESS, this->pid, priority );
+    if ( err == 0 && old_prio != getpriority( PRIO_PROCESS, this->pid ) ) {
+      this->nice = priority;
+    }
+    return ( err == 0 );
   }
-  return ( err == 0 );
+  else
+    return false;
 }
 
 unsigned long
@@ -607,7 +611,8 @@ Process_setAffinity( Process * this, unsigned long mask ) {
 
 void
 Process_sendSignal( Process * this, int signal ) {
-  kill( this->pid, signal );
+    if ( Process_getuid == 0 || Process_getuid == this->st_uid )
+        kill( this->pid, signal );
 }
 
 int

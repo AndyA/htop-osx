@@ -70,6 +70,7 @@ void TraceScreen_run(TraceScreen* this) {
    int child = fork();
    if (child == -1) return;
    if (child == 0) {
+      seteuid(getuid());
       dup2(fdpair[1], STDERR_FILENO);
       fcntl(fdpair[1], F_SETFL, O_NONBLOCK);
       sprintf(buffer, "%d", this->process->pid);

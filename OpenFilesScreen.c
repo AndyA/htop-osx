@@ -76,8 +76,13 @@ static void OpenFilesScreen_draw(OpenFilesScreen* this) {
 static OpenFiles_ProcessData* OpenFilesScreen_getProcessData(int pid) {
    char command[1025];
    snprintf(command, 1024, "lsof -p %d -F 2> /dev/null", pid);
+   uid_t euid = geteuid();
+   seteuid(getuid());
    FILE* fd = popen(command, "r");
+   seteuid(euid);
    OpenFiles_ProcessData* process = calloc(sizeof(OpenFiles_ProcessData), 1);
+   if (fd)
+   {
    OpenFiles_FileData* file = NULL;
    OpenFiles_ProcessData* item = process;
    process->failed = true;
@@ -107,6 +112,7 @@ static OpenFiles_ProcessData* OpenFilesScreen_getProcessData(int pid) {
       item->data[cmd] = entry;
    }
    pclose(fd);
+   }
    return process;
 }
 
