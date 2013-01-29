@@ -75,38 +75,43 @@ static void OpenFilesScreen_draw(OpenFilesScreen* this) {
 
 static OpenFiles_ProcessData* OpenFilesScreen_getProcessData(int pid) {
    char command[1025];
-   snprintf(command, 1024, "lsof -p %d -F 2> /dev/null", pid);
+   snprintf(command, 1024, "/usr/sbin/lsof -p %d -F 2> /dev/null", pid);
+   uid_t euid = geteuid();
+   seteuid(getuid());
    FILE* fd = popen(command, "r");
+   seteuid(euid);
    OpenFiles_ProcessData* process = calloc(sizeof(OpenFiles_ProcessData), 1);
-   OpenFiles_FileData* file = NULL;
-   OpenFiles_ProcessData* item = process;
-   process->failed = true;
-   bool anyRead = false;
-   while (!feof(fd)) {
-      int cmd = fgetc(fd);
-      if (cmd == EOF && !anyRead) {
-         process->failed = true;
-         break;
-      }
-      anyRead = true;
-      process->failed = false;
-      char* entry = malloc(1024);
-      if (!fgets(entry, 1024, fd)) break;
-      char* newline = strrchr(entry, '\n');
-      *newline = '\0';
-      if (cmd == 'f') {
-         OpenFiles_FileData* nextFile = calloc(sizeof(OpenFiles_ProcessData), 1);
-         if (file == NULL) {
-            process->files = nextFile;
-         } else {
-            file->next = nextFile;
+   if (fd) {
+      OpenFiles_FileData* file = NULL;
+      OpenFiles_ProcessData* item = process;
+      process->failed = true;
+      bool anyRead = false;
+      while (!feof(fd)) {
+         int cmd = fgetc(fd);
+         if (cmd == EOF && !anyRead) {
+            process->failed = true;
+            break;
          }
-         file = nextFile;
-         item = (OpenFiles_ProcessData*) file;
+         anyRead = true;
+         process->failed = false;
+         char* entry = malloc(1024);
+         if (!fgets(entry, 1024, fd)) break;
+         char* newline = strrchr(entry, '\n');
+         *newline = '\0';
+         if (cmd == 'f') {
+            OpenFiles_FileData* nextFile = calloc(sizeof(OpenFiles_ProcessData), 1);
+            if (file == NULL) {
+               process->files = nextFile;
+            } else {
+               file->next = nextFile;
+            }
+            file = nextFile;
+            item = (OpenFiles_ProcessData*) file;
+         }
+         item->data[cmd] = entry;
       }
-      item->data[cmd] = entry;
+      pclose(fd);
    }
-   pclose(fd);
    return process;
 }
 
@@ -114,33 +119,37 @@ static void OpenFilesScreen_scan(OpenFilesScreen* this) {
    Panel* panel = this->display;
    int index = MAX(Panel_getSelectedIndex(panel), 0);
    Panel_prune(panel);
-   OpenFiles_ProcessData* process = OpenFilesScreen_getProcessData(this->process->pid);
-   if (process->failed) {
-      Panel_add(panel, (Object*) ListItem_new("Could not execute 'lsof'. Please make sure it is available in your $PATH.", 0));
+   if (getuid() != 0 && getuid() != this->process->st_uid) {
+      Panel_add(panel, (Object*) ListItem_new("Process belongs to different user", 0));
    } else {
-      OpenFiles_FileData* file = process->files;
-      while (file) {
-         char entry[1024];
-         sprintf(entry, "%5s %4s %10s %10s %10s %s",
-            file->data['f'] ? file->data['f'] : "",
-            file->data['t'] ? file->data['t'] : "",
-            file->data['D'] ? file->data['D'] : "",
-            file->data['s'] ? file->data['s'] : "",
-            file->data['i'] ? file->data['i'] : "",
-            file->data['n'] ? file->data['n'] : "");
-         Panel_add(panel, (Object*) ListItem_new(entry, 0));
+      OpenFiles_ProcessData* process = OpenFilesScreen_getProcessData(this->process->pid);
+      if (process->failed) {
+         Panel_add(panel, (Object*) ListItem_new("Could not execute '/usr/sbin/lsof'.", 0));
+      } else {
+         OpenFiles_FileData* file = process->files;
+         while (file) {
+            char entry[1024];
+            sprintf(entry, "%5s %4s %10s %10s %10s %s",
+                    file->data['f'] ? file->data['f'] : "",
+                    file->data['t'] ? file->data['t'] : "",
+                    file->data['D'] ? file->data['D'] : "",
+                    file->data['s'] ? file->data['s'] : "",
+                    file->data['i'] ? file->data['i'] : "",
+                    file->data['n'] ? file->data['n'] : "");
+            Panel_add(panel, (Object*) ListItem_new(entry, 0));
+            for (int i = 0; i < 255; i++)
+               if (file->data[i])
+                  free(file->data[i]);
+            OpenFiles_FileData* old = file;
+            file = file->next;
+            free(old);
+         }
          for (int i = 0; i < 255; i++)
-            if (file->data[i])
-               free(file->data[i]);
-         OpenFiles_FileData* old = file;
-         file = file->next;
-         free(old);
+            if (process->data[i])
+               free(process->data[i]);
       }
-      for (int i = 0; i < 255; i++)
-         if (process->data[i])
-            free(process->data[i]);
+      free(process);
    }
-   free(process);
    Vector_sort(panel->items);
    Panel_setSelected(panel, index);
 }

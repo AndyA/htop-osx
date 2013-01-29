@@ -28,6 +28,8 @@ in the source distribution for its full text.
 #include "TraceScreen.h"
 #include "OpenFilesScreen.h"
 #include "AffinityPanel.h"
+#include "CmdlineScreen.h"
+#include "EnvScreen.h"
 
 #include "config.h"
 #include "debug.h"
@@ -122,6 +124,8 @@ static void showHelp(ProcessList* pl) {
    mvaddstr(19, 0, "   F2 S: setup                           F6 >: select sort column");
    mvaddstr(20, 0, "   F1 h: show this help screen              l: list open files with lsof");
    mvaddstr(21, 0, "  F10 q: quit                               s: trace syscalls with strace");
+   mvaddstr(22, 0, "                                            c: show process command line");
+   mvaddstr(23, 0, "                                            e: show process environmenr");
 
    attrset(CRT_colors[HELP_BOLD]);
    mvaddstr( 9, 0, " Arrows"); mvaddstr( 9,40, " F5 t");
@@ -141,6 +145,8 @@ static void showHelp(ProcessList* pl) {
    mvaddstr(19, 0, "   F2 S"); mvaddstr(19,40, " F6 >");
    mvaddstr(20, 0, "   F1 h"); mvaddstr(20,40, "    l");
    mvaddstr(21, 0, "  F10 q"); mvaddstr(21,40, "    s");
+   mvaddstr(22,40, "    c");
+   mvaddstr(23,40, "    e");
    attrset(CRT_colors[DEFAULT_COLOR]);
 
    attrset(CRT_colors[HELP_BOLD]);
@@ -151,7 +157,7 @@ static void showHelp(ProcessList* pl) {
    clear();
 }
 
-static char* CategoriesFunctions[10] = {"      ", "      ", "      ", "      ", "      ", "      ", "      ", "      ", "      ", "Done  "};
+static char* CategoriesFunctions[] = {"      ", "      ", "      ", "      ", "      ", "      ", "      ", "      ", "      ", "Done  ", NULL};
 
 static void Setup_run(Settings* settings, int headerHeight) {
    ScreenManager* scr = ScreenManager_new(0, headerHeight, 0, -1, HORIZONTAL, true);
@@ -190,8 +196,8 @@ static HandlerResult pickWithEnter(Panel* panel, int ch) {
 }
 
 static Object* pickFromVector(Panel* panel, Panel* list, int x, int y, char** keyLabels, FunctionBar* prevBar) {
-   char* fuKeys[2] = {"Enter", "Esc"};
-   int fuEvents[2] = {13, 27};
+   char* fuKeys[] = {"Enter", "Esc", NULL};
+   int fuEvents[] = {13, 27};
    if (!list->eventHandler)
       Panel_setEventHandler(list, pickWithEnter);
    ScreenManager* scr = ScreenManager_new(0, y, 0, -1, HORIZONTAL, false);
@@ -568,6 +574,28 @@ int main(int argc, char** argv) {
          CRT_enableDelay();
          break;
       }
+      case 'c':
+      {
+         CmdlineScreen* ts = CmdlineScreen_new((Process*) Panel_getSelected(panel));
+         CmdlineScreen_run(ts);
+         CmdlineScreen_delete(ts);
+         clear();
+         FunctionBar_draw(defaultBar, NULL);
+         refreshTimeout = 0;
+         CRT_enableDelay();
+         break;
+      }
+      case 'e':
+      {
+         EnvScreen* ts = EnvScreen_new((Process*) Panel_getSelected(panel));
+         EnvScreen_run(ts);
+         EnvScreen_delete(ts);
+         clear();
+         FunctionBar_draw(defaultBar, NULL);
+         refreshTimeout = 0;
+         CRT_enableDelay();
+         break;
+      }
       case 'S':
       case 'C':
       case KEY_F(2):
@@ -600,11 +628,11 @@ int main(int argc, char** argv) {
          if (picked) {
             if (picked == allUsers) {
                userOnly = false;
-               break;
             } else {
                setUserOnly(ListItem_getRef(picked), &userOnly, &userId);
             }
          }
+         Panel_delete((Object*) usersPanel);
          break;
       }
       case KEY_F(9):
