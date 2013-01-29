@@ -81,37 +81,36 @@ static OpenFiles_ProcessData* OpenFilesScreen_getProcessData(int pid) {
    FILE* fd = popen(command, "r");
    seteuid(euid);
    OpenFiles_ProcessData* process = calloc(sizeof(OpenFiles_ProcessData), 1);
-   if (fd)
-   {
-   OpenFiles_FileData* file = NULL;
-   OpenFiles_ProcessData* item = process;
-   process->failed = true;
-   bool anyRead = false;
-   while (!feof(fd)) {
-      int cmd = fgetc(fd);
-      if (cmd == EOF && !anyRead) {
-         process->failed = true;
-         break;
-      }
-      anyRead = true;
-      process->failed = false;
-      char* entry = malloc(1024);
-      if (!fgets(entry, 1024, fd)) break;
-      char* newline = strrchr(entry, '\n');
-      *newline = '\0';
-      if (cmd == 'f') {
-         OpenFiles_FileData* nextFile = calloc(sizeof(OpenFiles_ProcessData), 1);
-         if (file == NULL) {
-            process->files = nextFile;
-         } else {
-            file->next = nextFile;
+   if (fd) {
+      OpenFiles_FileData* file = NULL;
+      OpenFiles_ProcessData* item = process;
+      process->failed = true;
+      bool anyRead = false;
+      while (!feof(fd)) {
+         int cmd = fgetc(fd);
+         if (cmd == EOF && !anyRead) {
+            process->failed = true;
+            break;
          }
-         file = nextFile;
-         item = (OpenFiles_ProcessData*) file;
+         anyRead = true;
+         process->failed = false;
+         char* entry = malloc(1024);
+         if (!fgets(entry, 1024, fd)) break;
+         char* newline = strrchr(entry, '\n');
+         *newline = '\0';
+         if (cmd == 'f') {
+            OpenFiles_FileData* nextFile = calloc(sizeof(OpenFiles_ProcessData), 1);
+            if (file == NULL) {
+               process->files = nextFile;
+            } else {
+               file->next = nextFile;
+            }
+            file = nextFile;
+            item = (OpenFiles_ProcessData*) file;
+         }
+         item->data[cmd] = entry;
       }
-      item->data[cmd] = entry;
-   }
-   pclose(fd);
+      pclose(fd);
    }
    return process;
 }
