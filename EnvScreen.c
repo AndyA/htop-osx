@@ -37,7 +37,7 @@ void EnvScreen_delete(EnvScreen* this) {
 static void EnvScreen_draw(EnvScreen* this) {
    attrset(CRT_colors[METER_TEXT]);
    mvhline(0, 0, ' ', COLS);
-   mvprintw(0, 0, "command line of process %d - %s", this->process->pid, this->process->comm);
+   mvprintw(0, 0, "environment of process %d - %s", this->process->pid, this->process->comm);
    attrset(CRT_colors[DEFAULT_COLOR]);
    Panel_draw(this->display, true);
    FunctionBar_draw(this->bar, NULL);

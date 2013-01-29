@@ -75,7 +75,7 @@ static void OpenFilesScreen_draw(OpenFilesScreen* this) {
 
 static OpenFiles_ProcessData* OpenFilesScreen_getProcessData(int pid) {
    char command[1025];
-   snprintf(command, 1024, "lsof -p %d -F 2> /dev/null", pid);
+   snprintf(command, 1024, "/usr/sbin/lsof -p %d -F 2> /dev/null", pid);
    uid_t euid = geteuid();
    seteuid(getuid());
    FILE* fd = popen(command, "r");
@@ -119,33 +119,37 @@ static void OpenFilesScreen_scan(OpenFilesScreen* this) {
    Panel* panel = this->display;
    int index = MAX(Panel_getSelectedIndex(panel), 0);
    Panel_prune(panel);
-   OpenFiles_ProcessData* process = OpenFilesScreen_getProcessData(this->process->pid);
-   if (process->failed) {
-      Panel_add(panel, (Object*) ListItem_new("Could not execute 'lsof'. Please make sure it is available in your $PATH.", 0));
+   if (getuid() != 0 && getuid() != this->process->st_uid) {
+      Panel_add(panel, (Object*) ListItem_new("Process belongs to different user", 0));
    } else {
-      OpenFiles_FileData* file = process->files;
-      while (file) {
-         char entry[1024];
-         sprintf(entry, "%5s %4s %10s %10s %10s %s",
-            file->data['f'] ? file->data['f'] : "",
-            file->data['t'] ? file->data['t'] : "",
-            file->data['D'] ? file->data['D'] : "",
-            file->data['s'] ? file->data['s'] : "",
-            file->data['i'] ? file->data['i'] : "",
-            file->data['n'] ? file->data['n'] : "");
-         Panel_add(panel, (Object*) ListItem_new(entry, 0));
+      OpenFiles_ProcessData* process = OpenFilesScreen_getProcessData(this->process->pid);
+      if (process->failed) {
+         Panel_add(panel, (Object*) ListItem_new("Could not execute '/usr/sbin/lsof'.", 0));
+      } else {
+         OpenFiles_FileData* file = process->files;
+         while (file) {
+            char entry[1024];
+            sprintf(entry, "%5s %4s %10s %10s %10s %s",
+                    file->data['f'] ? file->data['f'] : "",
+                    file->data['t'] ? file->data['t'] : "",
+                    file->data['D'] ? file->data['D'] : "",
+                    file->data['s'] ? file->data['s'] : "",
+                    file->data['i'] ? file->data['i'] : "",
+                    file->data['n'] ? file->data['n'] : "");
+            Panel_add(panel, (Object*) ListItem_new(entry, 0));
+            for (int i = 0; i < 255; i++)
+               if (file->data[i])
+                  free(file->data[i]);
+            OpenFiles_FileData* old = file;
+            file = file->next;
+            free(old);
+         }
          for (int i = 0; i < 255; i++)
-            if (file->data[i])
-               free(file->data[i]);
-         OpenFiles_FileData* old = file;
-         file = file->next;
-         free(old);
+            if (process->data[i])
+               free(process->data[i]);
       }
-      for (int i = 0; i < 255; i++)
-         if (process->data[i])
-            free(process->data[i]);
+      free(process);
    }
-   free(process);
    Vector_sort(panel->items);
    Panel_setSelected(panel, index);
 }
