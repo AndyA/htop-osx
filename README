@@ -4,6 +4,14 @@ by Hisham Muhammad <loderunner@users.sourceforge.net>
 
 May, 2004 - June, 2009
 
+This Mac OS X fork is outdated
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+htop 1.x has been released for Linux, but this Mac fork is based
+on htop 0.8.x from 2009. Check the original htop webpage for Mac
+OS X support.
+http://hisham.hm/htop/
+
 Introduction
 ~~~~~~~~~~~~
 
